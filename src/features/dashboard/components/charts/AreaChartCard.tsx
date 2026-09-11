@@ -9,6 +9,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { RenderChart } from '../../types/dashboard'
+import SeriesTooltip from './SeriesTooltip'
+import { tickLabels } from './axisTicks'
 
 interface Props {
   spec: RenderChart
@@ -22,6 +24,7 @@ export default function AreaChartCard({ spec }: Props) {
   const series = spec.series.filter((s) => s.kind === 'area')
 
   const keys = series.map((s) => s.key)
+  const y = tickLabels(spec.axes.y?.ticks)
 
   return (
     <ResponsiveContainer width="100%" height="100%">
@@ -39,8 +42,8 @@ export default function AreaChartCard({ spec }: Props) {
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-        <YAxis tick={{ fontSize: 12 }} />
-        <Tooltip />
+        <YAxis tick={{ fontSize: 12 }} ticks={y?.values} tickFormatter={y?.format} />
+        <Tooltip content={<SeriesTooltip />} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {series.map((s) => (
           <Area

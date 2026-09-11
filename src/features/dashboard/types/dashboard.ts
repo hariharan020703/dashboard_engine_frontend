@@ -122,6 +122,8 @@ export interface CardDefinition {
   distinct?: boolean
   limits?: number
   series?: Record<string, SeriesDef>
+  dateGrain?: DateGrain
+  orderBy?: OrderByDef[]
   options?: Record<string, unknown>
   comparison?: KpiComparison
   layout?: CardLayout
@@ -200,10 +202,17 @@ export interface RenderSeries {
   yKey?: string
 }
 
+export interface AxisTick {
+  value: number
+  label: string
+}
+
 export interface RenderAxis {
   key: string
   name?: string
   type?: 'category' | 'number'
+  /** Precomputed by the backend; the chart renders these rather than deriving its own. */
+  ticks?: AxisTick[]
 }
 
 export interface RenderChart {
@@ -225,3 +234,33 @@ export interface RenderChart {
 }
 /** Slicer id -> the set of values the user has selected. */
 export type Selections = Record<string, Set<string>>
+
+/** One column of the dashboard's source table, as reported by the backend. */
+export interface SourceColumn {
+  name: string
+  type: string
+  columnType: string
+  nullable: boolean
+  isNumeric: boolean
+  isDate: boolean
+  isString: boolean
+  role: 'measure' | 'dimension'
+}
+
+/** GET /api/dashboard/columns — the catalogue the card editor picks fields from. */
+export interface ColumnCatalogue {
+  dashboardId: string
+  database: string
+  table: string
+  rowCount: number
+  rowCountText: string
+  dateParse: Record<string, string>
+  columns: SourceColumn[]
+}
+
+/** POST /api/dashboard/preview — a draft card run through the real engine. */
+export interface PreviewResult {
+  kind: 'kpi' | 'chart'
+  visual: (RenderChart & { error?: unknown }) | (HydratedKpi & { error?: unknown }) | null
+  error: { stage: string; message: string } | null
+}

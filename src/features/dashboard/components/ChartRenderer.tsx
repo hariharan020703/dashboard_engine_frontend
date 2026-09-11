@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react'
 import type { RenderChart } from '../types/dashboard'
 import { findRegistration } from './chartRegistry'
 
@@ -45,9 +46,10 @@ export default function ChartRenderer({ spec, onEdit }: { spec: RenderChart; onE
           <button
             onClick={onEdit}
             title="Edit card"
-            className="shrink-0 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-blue-300 hover:text-blue-600"
+            className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-xs text-slate-500 hover:border-blue-300 hover:text-blue-600"
           >
-            ✎ Edit
+            <Pencil size={12} />
+            Edit
           </button>
         )}
       </div>

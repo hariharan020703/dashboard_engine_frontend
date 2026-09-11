@@ -1,3 +1,4 @@
+import { X } from 'lucide-react'
 import type { DashboardLayout, HydratedSlicer } from '../types/dashboard'
 import { GAP_CLASSES, SPAN_CLASSES } from '../utils/grid'
 import SlicerCard from './SlicerCard'
@@ -43,9 +44,10 @@ export default function SlicerBar({ slicers, layout, selections, onChange, onCle
           <button
             type="button"
             onClick={onClearAll}
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm hover:border-rose-300 hover:text-rose-600"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm font-medium text-slate-600 shadow-sm hover:border-rose-300 hover:text-rose-600"
           >
-            ✕ Clear all filters
+            <X size={14} />
+            Clear all filters
           </button>
         </div>
       )}

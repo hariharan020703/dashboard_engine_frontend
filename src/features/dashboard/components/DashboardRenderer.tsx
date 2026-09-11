@@ -2,9 +2,10 @@ import { useState } from 'react'
 import type { DashboardLayout, HydratedDashboardView, CardDefinition } from '../types/dashboard'
 import KpiCard from './KpiCard'
 import ChartRenderer from './ChartRenderer'
-import CardEditor from './CardEditor'
+import CardEditor from './editor/CardEditor'
 import SlicerBar from './SlicerBar'
 import { GRID_COLS, SPAN_CLASSES, GAP_CLASSES } from '../utils/grid'
+import { buildFilters } from '../utils/filters'
 
 interface Props {
   view: HydratedDashboardView
@@ -24,6 +25,8 @@ export default function DashboardRenderer({ view, selections, onSlicerChange, on
   const gridClass = GRID_COLS[layout.cols || 12] || GRID_COLS[12]
 
   const [editing, setEditing] = useState<{ kind: 'kpi' | 'chart'; index: number; card: CardDefinition } | null>(null)
+  // The editor previews against the same filters the dashboard is showing.
+  const activeFilters = buildFilters(selections)
 
   const handleSave = (updated: CardDefinition) => {
     if (!editing) return
@@ -83,6 +86,7 @@ export default function DashboardRenderer({ view, selections, onSlicerChange, on
         <CardEditor
           card={editing.card}
           kind={editing.kind}
+          filters={activeFilters}
           onSave={handleSave}
           onClose={() => setEditing(null)}
         />

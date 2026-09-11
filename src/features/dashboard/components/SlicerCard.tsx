@@ -1,3 +1,4 @@
+import { ChevronDown, X } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import type { SlicerDef } from '../types/dashboard'
 
@@ -56,7 +57,10 @@ export default function SlicerCard({ slicer, values, counts, selected, onChange,
           <span className={`rounded-md px-2 py-0.5 text-xs font-semibold ${selected.size ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>
             {summary}
           </span>
-          <span className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}>▾</span>
+          <ChevronDown
+            size={14}
+            className={`text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          />
         </span>
       </button>
 
@@ -65,9 +69,10 @@ export default function SlicerCard({ slicer, values, counts, selected, onChange,
           <button
             type="button"
             onClick={clear}
-            className="mb-1 w-full rounded-md bg-slate-50 px-2 py-1 text-left text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+            className="mb-1 flex w-full items-center gap-1.5 rounded-md bg-slate-50 px-2 py-1 text-left text-xs font-medium text-slate-500 hover:bg-slate-100 hover:text-slate-700"
           >
-            ✕ Clear
+            <X size={12} />
+            Clear
           </button>
           {!values.length && <p className="px-2 py-1 text-xs text-slate-400">No values</p>}
           {values.map((v) => {

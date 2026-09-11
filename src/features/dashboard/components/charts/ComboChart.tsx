@@ -10,6 +10,8 @@ import {
   ResponsiveContainer,
 } from 'recharts'
 import type { RenderChart, RenderSeries } from '../../types/dashboard'
+import SeriesTooltip from './SeriesTooltip'
+import { tickLabels } from './axisTicks'
 
 interface Props {
   spec: RenderChart
@@ -20,6 +22,8 @@ export default function ComboChart({ spec }: Props) {
   const xKey = spec.axes.x?.key || 'label'
   const bars = spec.series.filter((s) => s.kind === 'bar')
   const lines = spec.series.filter((s) => s.kind === 'line')
+  const y1 = tickLabels(spec.axes.y?.ticks)
+  const y2 = tickLabels(spec.axes.y2?.ticks)
 
   const renderSeries = (s: RenderSeries, isBar: boolean) =>
     isBar ? (
@@ -49,9 +53,17 @@ export default function ComboChart({ spec }: Props) {
       <ComposedChart data={spec.data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
         <XAxis dataKey={xKey} tick={{ fontSize: 12 }} />
-        <YAxis yAxisId="y1" tick={{ fontSize: 12 }} />
-        {dual && <YAxis yAxisId="y2" orientation="right" tick={{ fontSize: 12 }} />}
-        <Tooltip />
+        <YAxis yAxisId="y1" tick={{ fontSize: 12 }} ticks={y1?.values} tickFormatter={y1?.format} />
+        {dual && (
+          <YAxis
+            yAxisId="y2"
+            orientation="right"
+            tick={{ fontSize: 12 }}
+            ticks={y2?.values}
+            tickFormatter={y2?.format}
+          />
+        )}
+        <Tooltip content={<SeriesTooltip />} />
         <Legend wrapperStyle={{ fontSize: 12 }} />
         {bars.map((s) => renderSeries(s, true))}
         {lines.map((s) => renderSeries(s, false))}

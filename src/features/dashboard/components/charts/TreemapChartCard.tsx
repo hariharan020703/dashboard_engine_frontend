@@ -7,13 +7,20 @@ interface Props {
 
 const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#06b6d4', '#84cc16']
 
-const CustomTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number; payload?: { fill?: string } }> }) => {
+const CustomTooltip = ({
+  active,
+  payload,
+}: {
+  active?: boolean
+  payload?: Array<{ name: string; payload?: { valueText?: string; shareText?: string } }>
+}) => {
   if (!active || !payload?.length) return null
   const d = payload[0]
   return (
     <div className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-md">
       <p className="text-xs font-medium text-slate-500">{d.name}</p>
-      <p className="text-sm font-semibold text-slate-900">{d.value.toLocaleString('en-US')}</p>
+      <p className="text-sm font-semibold text-slate-900">{d.payload?.valueText ?? ''}</p>
+      {d.payload?.shareText && <p className="text-[11px] text-slate-400">{d.payload.shareText}</p>}
     </div>
   )
 }
@@ -24,7 +31,7 @@ const CustomContent = (props: {
   width: number
   height: number
   name: string
-  value: number
+  valueText?: string
   fill?: string
   index: number
 }) => {
@@ -39,7 +46,7 @@ const CustomContent = (props: {
             {name.length > Math.floor(width / 8) ? name.slice(0, Math.floor(width / 8)) + '…' : name}
           </text>
           <text x={x + 8} y={y + 34} fill="rgba(255,255,255,0.8)" fontSize={11}>
-            {props.value?.toLocaleString('en-US')}
+            {props.valueText ?? ''}
           </text>
         </>
       )}
@@ -48,7 +55,14 @@ const CustomContent = (props: {
 }
 
 export default function TreemapChartCard({ spec }: Props) {
-  const data = (spec.data as unknown as Array<{ name: string; value: number; fill?: string }>) || []
+  const data =
+    (spec.data as unknown as Array<{
+      name: string
+      value: number
+      valueText?: string
+      shareText?: string
+      fill?: string
+    }>) || []
   const colorMap = (spec.options as Record<string, unknown>)?.colorMap as Record<string, string> | undefined
 
   const colored = data.map((d, i) => ({
@@ -63,7 +77,7 @@ export default function TreemapChartCard({ spec }: Props) {
           data={colored}
           dataKey="value"
           aspectRatio={4 / 3}
-          content={<CustomContent x={0} y={0} width={0} height={0} name="" value={0} index={0} />}
+          content={<CustomContent x={0} y={0} width={0} height={0} name="" index={0} />}
         >
           <Tooltip content={<CustomTooltip />} />
         </Treemap>

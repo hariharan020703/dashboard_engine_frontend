@@ -1,3 +1,4 @@
+import { Pencil } from 'lucide-react'
 interface Props {
   kpi: {
     id: string
@@ -32,9 +33,9 @@ export default function KpiCard({ kpi, accent = 'from-blue-500 to-emerald-500', 
           <button
             onClick={onEdit}
             title="Edit card"
-            className="shrink-0 rounded-md border border-slate-200 px-2 py-0.5 text-xs text-slate-500 hover:border-blue-300 hover:text-blue-600"
+            className="grid h-6 w-6 shrink-0 place-items-center rounded-md border border-slate-200 text-slate-500 hover:border-blue-300 hover:text-blue-600"
           >
-            ✎
+            <Pencil size={12} />
           </button>
         )}
       </div>
