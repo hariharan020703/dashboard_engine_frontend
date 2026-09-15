@@ -61,10 +61,10 @@ export default function DashboardPage() {
     loadView({})
   }
 
-  const onCardEdit = async (kind: 'kpi' | 'chart', index: number, card: CardDefinition) => {
+  const onCardEdit = async (index: number, card: CardDefinition) => {
     setViewLoading(true)
     try {
-      const v = await patchCard(kind, index, card, buildFilters(selections))
+      const v = await patchCard(index, card, buildFilters(selections))
       setView(v)
       syncSelections(v)
     } finally {

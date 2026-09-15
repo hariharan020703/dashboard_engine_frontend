@@ -22,8 +22,8 @@ export async function fetchView(
   return res.json()
 }
 
+/** Replaces one card — KPI or chart, they are the same list — by its position. */
 export async function patchCard(
-  kind: 'kpi' | 'chart',
   index: number,
   card: CardDefinition,
   filters: Record<string, string[]>
@@ -31,7 +31,7 @@ export async function patchCard(
   const res = await fetch('/api/dashboard/config', {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, index, card, filters }),
+    body: JSON.stringify({ index, card, filters }),
   })
   if (!res.ok) throw new Error('failed to save')
   const json = await res.json()
@@ -45,16 +45,18 @@ export async function fetchColumns(): Promise<ColumnCatalogue> {
   return res.json()
 }
 
-/** Runs a draft card through the engine without saving it. */
+/**
+ * Runs a draft card through the engine without saving it. The response says
+ * whether the draft came back as a badge or a chart, read off its chartType.
+ */
 export async function previewCard(
-  kind: 'kpi' | 'chart',
   card: CardDefinition,
   filters: Record<string, string[]> = {}
 ): Promise<PreviewResult> {
   const res = await fetch('/api/dashboard/preview', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ kind, card, filters }),
+    body: JSON.stringify({ card, filters }),
   })
   if (!res.ok) throw new Error('failed to preview card')
   return res.json()

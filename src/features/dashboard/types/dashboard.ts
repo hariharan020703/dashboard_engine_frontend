@@ -48,20 +48,6 @@ export interface OrderByDef {
   calendar?: boolean
 }
 
-export interface SeriesDef {
-  name?: string
-  columns: ColumnDef[]
-  filters?: Array<Record<string, unknown>>
-  groupBy?: GroupByDef[]
-  dateGrain?: DateGrain
-  distinct?: boolean
-  fiscal?: boolean
-  limit?: number
-  orderBy?: OrderByDef[]
-  projection?: boolean
-  variables?: boolean
-}
-
 export interface ChartMain {
   component?: string
   chartType: string
@@ -109,6 +95,11 @@ export interface SlicerDef {
   sort?: 'asc' | 'desc'
 }
 
+/**
+ * One card on a dashboard. KPIs and charts share this single shape — chartType
+ * is what decides which of the two a card renders as, so every editing option
+ * applies to every card.
+ */
 export interface CardDefinition {
   id: string
   name: string
@@ -121,7 +112,6 @@ export interface CardDefinition {
   groupBy?: GroupByDef[]
   distinct?: boolean
   limits?: number
-  series?: Record<string, SeriesDef>
   dateGrain?: DateGrain
   orderBy?: OrderByDef[]
   options?: Record<string, unknown>
@@ -132,11 +122,17 @@ export interface CardDefinition {
   }
 }
 
+export type CardKind = 'kpi' | 'chart'
+
 export interface HydratedKpi {
   id: string
+  chartType: string
   title: string
+  description?: string
   value: number
   text: string
+  /** Accent colour chosen in the editor, or null for the card's default. */
+  color?: string | null
   format?: CardFormat
   comparison: {
     label: string
@@ -146,6 +142,7 @@ export interface HydratedKpi {
     period: string
     previousPeriod: string
   }
+  error?: unknown
   spec?: CardDefinition
 }
 
@@ -153,6 +150,9 @@ export interface HydratedChart extends RenderChart {
   error?: string
   spec?: CardDefinition
 }
+
+/** A hydrated card is whichever of the two its chartType selected. */
+export type HydratedCard = HydratedKpi | HydratedChart
 
 export interface HydratedSlicerOption {
   value: string
@@ -173,12 +173,12 @@ export interface HydratedSlicer {
 export interface HydratedDashboardView {
   dashboard: { title?: string; description?: string }
   layout?: DashboardLayout
-  kpis: HydratedKpi[]
-  cards: HydratedChart[]
+  cards: HydratedCard[]
   slicers: HydratedSlicer[]
 }
 
 export type ChartKind =
+  | 'badge'
   | 'combo'
   | 'area'
   | 'treemap'
@@ -260,7 +260,8 @@ export interface ColumnCatalogue {
 
 /** POST /api/dashboard/preview — a draft card run through the real engine. */
 export interface PreviewResult {
-  kind: 'kpi' | 'chart'
+  /** Derived server-side from the draft's chartType. */
+  kind: CardKind
   visual: (RenderChart & { error?: unknown }) | (HydratedKpi & { error?: unknown }) | null
   error: { stage: string; message: string } | null
 }

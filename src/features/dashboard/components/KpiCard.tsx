@@ -1,26 +1,22 @@
-import { Pencil } from 'lucide-react'
+import { AlertCircle, Pencil } from 'lucide-react'
+import type { HydratedKpi } from '../types/dashboard'
+
 interface Props {
-  kpi: {
-    id: string
-    title: string
-    value: number
-    text: string
-    comparison: {
-      label: string
-      delta: number
-      deltaText: string
-      previousText?: string
-      period?: string
-      previousPeriod?: string
-    }
-  }
+  kpi: HydratedKpi
+  /** Gradient used when the card declares no colour of its own. */
   accent?: string
   minHeight?: number
   onEdit?: () => void
 }
 
+function errorMessage(error: unknown): string | null {
+  if (!error || typeof error !== 'object' || !('message' in error)) return null
+  return String((error as { message: unknown }).message)
+}
+
 export default function KpiCard({ kpi, accent = 'from-blue-500 to-emerald-500', minHeight, onEdit }: Props) {
-  const { text, comparison } = kpi
+  const { text, comparison, color } = kpi
+  const message = errorMessage(kpi.error)
 
   return (
     <div
@@ -39,20 +35,35 @@ export default function KpiCard({ kpi, accent = 'from-blue-500 to-emerald-500', 
           </button>
         )}
       </div>
-      <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{text}</p>
-      {comparison.period && <p className="mt-1 text-xs text-slate-400">{comparison.period}</p>}
-      {comparison.label && (
-        <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
-          <span className="font-semibold text-slate-500">{comparison.deltaText}</span>
-          <span className="text-slate-400">
-            {comparison.label}
-            {comparison.previousPeriod ? ` (${comparison.previousPeriod}` : ''}
-            {comparison.previousText ? `: ${comparison.previousText}` : ''}
-            {comparison.previousPeriod ? ')' : ''}
-          </span>
-        </div>
+
+      {message ? (
+        <p className="mt-2 flex items-start gap-1.5 text-xs leading-snug text-red-600">
+          <AlertCircle size={13} className="mt-px shrink-0" />
+          <span>{message}</span>
+        </p>
+      ) : (
+        <>
+          <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">{text}</p>
+          {comparison.period && <p className="mt-1 text-xs text-slate-400">{comparison.period}</p>}
+          {comparison.label && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold text-slate-500">{comparison.deltaText}</span>
+              <span className="text-slate-400">
+                {comparison.label}
+                {comparison.previousPeriod ? ` (${comparison.previousPeriod}` : ''}
+                {comparison.previousText ? `: ${comparison.previousText}` : ''}
+                {comparison.previousPeriod ? ')' : ''}
+              </span>
+            </div>
+          )}
+        </>
       )}
-      <div className={`absolute inset-x-0 bottom-0 h-1 bg-gradient-to-r ${accent}`} />
+
+      {/* The Colours tab sets this; without one the card keeps its gradient. */}
+      <div
+        className={`absolute inset-x-0 bottom-0 h-1 ${color ? '' : `bg-gradient-to-r ${accent}`}`}
+        style={color ? { backgroundColor: color } : undefined}
+      />
     </div>
   )
 }

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
 import {
   ArrowUpDown,
   BarChart3,
@@ -14,9 +14,7 @@ import type {
   ColumnCatalogue,
   ColumnDef,
   DateGrain,
-  Mapping,
   PreviewResult,
-  SeriesDef,
   SourceColumn,
 } from '../../types/dashboard'
 import { fetchColumns, previewCard } from '../../services/dashboardApi'
@@ -24,7 +22,7 @@ import ColumnCataloguePanel from './ColumnCatalogue'
 import EditorPreview from './EditorPreview'
 import { CloseButton } from './editorUi'
 import {
-  ChartTypeSection,
+  CardTypeSection,
   ColorSection,
   DataSourceSection,
   DateGrainSection,
@@ -34,58 +32,52 @@ import {
   type Ctx,
 } from './EditorSections'
 import { deriveGroupBy } from './cardModel'
-import { findRegistration } from '../chartRegistry'
+import { cardKindOf, cardTypeLabel } from '../cardRegistry'
 
 interface Props {
   card: CardDefinition
-  kind: 'kpi' | 'chart'
   filters?: Record<string, string[]>
   onSave: (updated: CardDefinition) => void
   onClose: () => void
 }
 
-type TabId = 'fields' | 'sort' | 'period' | 'chart' | 'color' | 'properties' | 'source'
+type TabId = 'fields' | 'sort' | 'period' | 'type' | 'color' | 'properties' | 'source'
 
-const TABS: Array<{ id: TabId; label: string; icon: LucideIcon; kinds: Array<'kpi' | 'chart'> }> = [
-  { id: 'fields', label: 'Fields', icon: Table2, kinds: ['kpi', 'chart'] },
-  { id: 'chart', label: 'Chart', icon: BarChart3, kinds: ['chart'] },
-  { id: 'sort', label: 'Sort', icon: ArrowUpDown, kinds: ['chart'] },
-  { id: 'period', label: 'Period', icon: CalendarClock, kinds: ['kpi', 'chart'] },
-  { id: 'color', label: 'Colours', icon: Palette, kinds: ['chart'] },
-  { id: 'properties', label: 'Format', icon: SlidersHorizontal, kinds: ['kpi', 'chart'] },
-  { id: 'source', label: 'Source', icon: Database, kinds: ['kpi', 'chart'] },
+/**
+ * Every card is edited with the same options. A KPI is a card whose type is a
+ * badge, so nothing here is withheld based on what the card happens to be —
+ * switching the type on the Type tab re-renders the preview as the other thing.
+ */
+const TABS: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
+  { id: 'fields', label: 'Fields', icon: Table2 },
+  { id: 'type', label: 'Type', icon: BarChart3 },
+  { id: 'sort', label: 'Sort', icon: ArrowUpDown },
+  { id: 'period', label: 'Period', icon: CalendarClock },
+  { id: 'color', label: 'Colours', icon: Palette },
+  { id: 'properties', label: 'Format', icon: SlidersHorizontal },
+  { id: 'source', label: 'Source', icon: Database },
 ]
 
 const PREVIEW_DEBOUNCE_MS = 500
 
-function columnsOf(card: CardDefinition, kind: 'kpi' | 'chart'): ColumnDef[] {
-  return (kind === 'kpi' ? card.series?.main?.columns : card.columns) ?? []
-}
-
 /**
- * Normalises the draft before it leaves the editor: groupBy is rederived from the
- * field roles and empty fields are dropped, so the saved JSON is always
+ * Normalises the draft before it leaves the editor: groupBy is rederived from
+ * the field roles and empty fields are dropped, so the saved JSON is always
  * internally consistent.
  */
-function normalise(draft: CardDefinition, kind: 'kpi' | 'chart'): CardDefinition {
+function normalise(draft: CardDefinition): CardDefinition {
   const next = structuredClone(draft)
-  const cols = columnsOf(next, kind).filter((c) => (c.column ?? '').trim())
+  const cols = (next.columns ?? []).filter((c) => (c.column ?? '').trim())
+  next.columns = cols
 
-  if (kind === 'kpi') {
-    next.series = {
-      ...(next.series ?? {}),
-      main: { ...(next.series?.main ?? {}), columns: cols } as SeriesDef,
-    }
-  } else {
-    next.columns = cols
-    const groupBy = deriveGroupBy(cols)
-    if (groupBy.length) next.groupBy = groupBy
-    else delete next.groupBy
-  }
+  const groupBy = deriveGroupBy(cols)
+  if (groupBy.length) next.groupBy = groupBy
+  else delete next.groupBy
+
   return next
 }
 
-export default function CardEditor({ card, kind, filters = {}, onSave, onClose }: Props) {
+export default function CardEditor({ card, filters = {}, onSave, onClose }: Props) {
   const [draft, setDraft] = useState<CardDefinition>(() => structuredClone(card))
   const [tab, setTab] = useState<TabId>('fields')
   const [catalogue, setCatalogue] = useState<ColumnCatalogue | null>(null)
@@ -95,7 +87,8 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
   const [autoPreview, setAutoPreview] = useState(true)
   const requestId = useRef(0)
 
-  const tabs = useMemo(() => TABS.filter((t) => t.kinds.includes(kind)), [kind])
+  // Derived, never stored: the card type is the single source of truth.
+  const kind = cardKindOf(draft.chartType)
 
   useEffect(() => {
     let active = true
@@ -127,7 +120,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
     (candidate: CardDefinition) => {
       const id = ++requestId.current
       setPreviewPending(true)
-      previewCard(kind, normalise(candidate, kind), filters)
+      previewCard(normalise(candidate), filters)
         .then((r) => {
           if (id === requestId.current) {
             setPreview(r)
@@ -136,12 +129,16 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
         })
         .catch((e) => {
           if (id === requestId.current) {
-            setPreview({ kind, visual: null, error: { stage: 'request', message: e.message } })
+            setPreview({
+              kind: cardKindOf(candidate.chartType),
+              visual: null,
+              error: { stage: 'request', message: e.message },
+            })
             setPreviewPending(false)
           }
         })
     },
-    [kind, filters]
+    [filters]
   )
 
   // Debounced so typing in a text field does not fire a query per keystroke.
@@ -156,63 +153,51 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
   const setOption = (key: string, value: unknown) =>
     setDraft((prev) => ({ ...prev, options: { ...(prev.options ?? {}), [key]: value } }))
 
-  const writeColumns = (prev: CardDefinition, cols: ColumnDef[]): CardDefinition => {
-    if (kind === 'kpi') {
-      const main: Partial<SeriesDef> = prev.series?.main ?? {}
-      return { ...prev, series: { ...(prev.series ?? {}), main: { ...main, columns: cols } as SeriesDef } }
-    }
-    return { ...prev, columns: cols }
-  }
-
   const setColumn = (idx: number, field: keyof ColumnDef, value: unknown) =>
     setDraft((prev) => {
-      const cols = [...columnsOf(prev, kind)]
+      const cols = [...(prev.columns ?? [])]
       cols[idx] = { ...(cols[idx] ?? { column: '' }), [field]: value }
-      return writeColumns(prev, cols)
+      return { ...prev, columns: cols }
     })
 
   const addColumn = () =>
-    setDraft((prev) =>
-      writeColumns(prev, [
-        ...columnsOf(prev, kind),
-        { column: '', mapping: 'VALUE' as Mapping, aggregation: 'SUM' },
-      ])
-    )
+    setDraft((prev) => ({
+      ...prev,
+      columns: [...(prev.columns ?? []), { column: '', mapping: 'VALUE', aggregation: 'SUM' }],
+    }))
 
   const removeColumn = (idx: number) =>
-    setDraft((prev) => writeColumns(prev, columnsOf(prev, kind).filter((_, i) => i !== idx)))
+    setDraft((prev) => ({ ...prev, columns: (prev.columns ?? []).filter((_, i) => i !== idx) }))
 
   const setDateGrain = (grain: DateGrain | undefined) =>
     setDraft((prev) => {
-      if (kind === 'kpi') {
-        const nextMain = { ...(prev.series?.main ?? {}) } as SeriesDef
-        if (grain) nextMain.dateGrain = grain
-        else delete nextMain.dateGrain
-        return { ...prev, series: { ...(prev.series ?? {}), main: nextMain } }
-      }
       const next = { ...prev }
       if (grain) next.dateGrain = grain
       else delete next.dateGrain
       return next
     })
 
-  /** Clicking a column in the catalogue adds it with a role matching its type. */
+  /**
+   * Clicking a column in the catalogue adds it with a role matching its type.
+   * On a badge a dimension is still the value — counted rather than grouped by.
+   */
   const pickColumn = (col: SourceColumn) => {
-    const entry: ColumnDef =
-      col.role === 'measure'
-        ? { column: col.name, mapping: 'VALUE', aggregation: 'SUM' }
-        : { column: col.name, mapping: kind === 'kpi' ? 'VALUE' : 'XTIME' }
+    let entry: ColumnDef
+    if (col.role === 'measure') entry = { column: col.name, mapping: 'VALUE', aggregation: 'SUM' }
+    else if (kind === 'kpi') entry = { column: col.name, mapping: 'VALUE', aggregation: 'COUNTDISTINCT' }
+    else entry = { column: col.name, mapping: 'XTIME' }
+
     setDraft((prev) => {
-      const cols = [...columnsOf(prev, kind)]
+      const cols = [...(prev.columns ?? [])]
       const empty = cols.findIndex((c) => !(c.column ?? '').trim())
       if (empty >= 0) cols[empty] = entry
       else cols.push(entry)
-      return writeColumns(prev, cols)
+      return { ...prev, columns: cols }
     })
     setTab('fields')
   }
 
-  const columns = columnsOf(draft, kind)
+  const columns = draft.columns ?? []
   const ctx: Ctx = {
     kind,
     draft,
@@ -228,7 +213,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
 
   const panels: Record<TabId, ReactElement | null> = {
     fields: <FieldsSection {...ctx} />,
-    chart: <ChartTypeSection {...ctx} />,
+    type: <CardTypeSection {...ctx} />,
     sort: <SortSection {...ctx} />,
     period: <DateGrainSection {...ctx} />,
     color: <ColorSection {...ctx} />,
@@ -236,7 +221,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
     source: <DataSourceSection {...ctx} />,
   }
 
-  const dirty = JSON.stringify(normalise(draft, kind)) !== JSON.stringify(normalise(card, kind))
+  const dirty = JSON.stringify(normalise(draft)) !== JSON.stringify(normalise(card))
   const blocked = Boolean(preview?.error)
 
   return (
@@ -247,9 +232,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
             <h2 className="truncate text-[15px] font-semibold leading-tight text-slate-900">
               {draft.title || draft.name || draft.id}
             </h2>
-            <p className="text-[11px] leading-tight text-slate-400">
-              {kind === 'kpi' ? 'KPI' : findRegistration(draft.chartType ?? '')?.label ?? draft.chartType}
-            </p>
+            <p className="text-[11px] leading-tight text-slate-400">{cardTypeLabel(draft.chartType)}</p>
           </div>
           {dirty && (
             <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-amber-600">
@@ -267,7 +250,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
           <button
             type="button"
             disabled={blocked}
-            onClick={() => onSave(normalise(draft, kind))}
+            onClick={() => onSave(normalise(draft))}
             className="shrink-0 rounded-md bg-blue-600 px-4 py-1.5 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
           >
             Save
@@ -285,7 +268,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
 
           {/* Vertical section nav keeps each panel short enough to avoid scrolling. */}
           <nav className="flex w-[132px] shrink-0 flex-col gap-0.5 border-r border-slate-200 bg-slate-50 p-2">
-            {tabs.map((t) => {
+            {TABS.map((t) => {
               const active = tab === t.id
               const Icon = t.icon
               return (
@@ -311,7 +294,7 @@ export default function CardEditor({ card, kind, filters = {}, onSave, onClose }
           </div>
 
           <EditorPreview
-            kind={kind}
+            kind={preview?.kind ?? kind}
             draft={draft}
             preview={preview}
             pending={previewPending}

@@ -1,13 +1,14 @@
-import { BarChart3, ChartArea, Grid2x2, Plus, TrendingDown, Trash2 } from 'lucide-react'
+import { BarChart3, ChartArea, Gauge, Grid2x2, Plus, TrendingDown, Trash2 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import type {
   CardDefinition,
+  CardKind,
   ColumnCatalogue,
   ColumnDef,
   DateGrain,
   Mapping,
 } from '../../types/dashboard'
-import { chartRegistry, findRegistration } from '../chartRegistry'
+import { cardRegistry, findRegistration } from '../cardRegistry'
 import { Field, Group, IconButton, Notice, Toggle } from './editorUi'
 import { ROLE_STYLE, inputCls } from './editorStyles'
 import { AGGS, GRAINS, deriveGroupBy } from './cardModel'
@@ -20,7 +21,8 @@ const ROLE_OPTIONS: Array<{ value: Mapping; label: string }> = [
   { value: 'XVAL', label: 'X value' },
 ]
 
-const CHART_ICONS: Partial<Record<string, LucideIcon>> = {
+const CARD_ICONS: Partial<Record<string, LucideIcon>> = {
+  badge: Gauge,
   combo: BarChart3,
   area: ChartArea,
   treemap: Grid2x2,
@@ -34,8 +36,13 @@ const FORMAT_STYLES = [
   { value: 'percent', label: 'Percent' },
 ]
 
+/**
+ * Every section is rendered for every card. Where an option only bites once the
+ * card is a chart, the section says so rather than hiding itself — the card's
+ * type is one click away on the Type tab.
+ */
 export interface Ctx {
-  kind: 'kpi' | 'chart'
+  kind: CardKind
   draft: CardDefinition
   catalogue: ColumnCatalogue | null
   columns: ColumnDef[]
@@ -45,6 +52,11 @@ export interface Ctx {
   removeColumn: (idx: number) => void
   setDateGrain: (grain: DateGrain | undefined) => void
   setOption: (key: string, value: unknown) => void
+}
+
+/** Shown under any control a KPI badge ignores. */
+function BadgeNotice({ children }: { children: string }) {
+  return <Notice>{children}</Notice>
 }
 
 function ColumnSelect({
@@ -123,9 +135,7 @@ export function DataSourceSection({ catalogue, draft }: Ctx) {
 
 export function FieldsSection(ctx: Ctx) {
   const { kind, columns, catalogue, setColumn, addColumn, removeColumn } = ctx
-  const isChart = kind === 'chart'
   const groupBy = deriveGroupBy(columns)
-  const grid = isChart ? 'grid-cols-[1fr_86px_104px_28px]' : 'grid-cols-[1fr_104px_28px]'
 
   return (
     <>
@@ -143,11 +153,9 @@ export function FieldsSection(ctx: Ctx) {
         }
       >
         {columns.length > 0 && (
-          <div className={`mb-1.5 grid items-center gap-2 px-0.5 ${grid}`}>
+          <div className="mb-1.5 grid grid-cols-[1fr_86px_104px_28px] items-center gap-2 px-0.5">
             <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Column</span>
-            {isChart && (
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Role</span>
-            )}
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Role</span>
             <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Aggregate</span>
             <span />
           </div>
@@ -161,26 +169,24 @@ export function FieldsSection(ctx: Ctx) {
               isValue && meta && !meta.isNumeric && ['SUM', 'AVERAGE'].includes(col.aggregation ?? 'SUM')
             return (
               <div key={i}>
-                <div className={`grid items-center gap-2 ${grid}`}>
+                <div className="grid grid-cols-[1fr_86px_104px_28px] items-center gap-2">
                   <ColumnSelect
                     value={col.column ?? ''}
                     onChange={(v) => setColumn(i, 'column', v)}
                     catalogue={catalogue}
                     only={isValue ? undefined : 'dimension'}
                   />
-                  {isChart && (
-                    <select
-                      className={inputCls}
-                      value={col.mapping ?? 'VALUE'}
-                      onChange={(e) => setColumn(i, 'mapping', e.target.value)}
-                    >
-                      {ROLE_OPTIONS.map((m) => (
-                        <option key={m.value} value={m.value}>
-                          {m.label}
-                        </option>
-                      ))}
-                    </select>
-                  )}
+                  <select
+                    className={inputCls}
+                    value={col.mapping ?? 'VALUE'}
+                    onChange={(e) => setColumn(i, 'mapping', e.target.value)}
+                  >
+                    {ROLE_OPTIONS.map((m) => (
+                      <option key={m.value} value={m.value}>
+                        {m.label}
+                      </option>
+                    ))}
+                  </select>
                   {isValue ? (
                     <select
                       className={inputCls}
@@ -214,26 +220,30 @@ export function FieldsSection(ctx: Ctx) {
             </p>
           )}
         </div>
+        {kind === 'kpi' && (
+          <BadgeNotice>A badge reads the first Value field; the other roles apply once this card is a chart.</BadgeNotice>
+        )}
       </Group>
 
-      {isChart && (
-        <Group title="Grouped by">
-          {groupBy.length ? (
-            <div className="flex flex-wrap gap-1.5">
-              {groupBy.map((g) => (
-                <span
-                  key={g.column}
-                  className={`rounded px-2 py-1 text-[12px] font-medium ring-1 ${ROLE_STYLE.dimension.chip}`}
-                >
-                  {g.column}
-                </span>
-              ))}
-            </div>
-          ) : (
-            <p className="text-[12px] text-slate-400">Whole table aggregated as one value</p>
-          )}
-        </Group>
-      )}
+      <Group title="Grouped by">
+        {groupBy.length ? (
+          <div className="flex flex-wrap gap-1.5">
+            {groupBy.map((g) => (
+              <span
+                key={g.column}
+                className={`rounded px-2 py-1 text-[12px] font-medium ring-1 ${ROLE_STYLE.dimension.chip}`}
+              >
+                {g.column}
+              </span>
+            ))}
+          </div>
+        ) : (
+          <p className="text-[12px] text-slate-400">Whole table aggregated as one value</p>
+        )}
+        {kind === 'kpi' && groupBy.length > 0 && (
+          <BadgeNotice>A badge is a single number, so it ignores these groupings.</BadgeNotice>
+        )}
+      </Group>
     </>
   )
 }
@@ -241,9 +251,8 @@ export function FieldsSection(ctx: Ctx) {
 /* --------------------------------------------------------------- Sort/limit */
 
 export function SortSection({ draft, columns, setCard, setOption, kind }: Ctx) {
-  if (kind === 'kpi') return null
   const order = Array.isArray(draft.orderBy) ? draft.orderBy[0] : undefined
-  const isFunnel = findRegistration(draft.chartType ?? '')?.kind === 'funnel'
+  const isFunnel = findRegistration(draft.chartType)?.kind === 'funnel'
   const segments = Number((draft.options ?? {}).funnelSegments ?? 5)
   const measures = columns.filter((c) => (c.mapping ?? 'VALUE') === 'VALUE').map((c) => c.column)
   const sortable = [...deriveGroupBy(columns).map((d) => d.column), ...measures]
@@ -320,6 +329,9 @@ export function SortSection({ draft, columns, setCard, setOption, kind }: Ctx) {
         )}
       </div>
       {invalid && <Notice>{order?.column} is not a field on this card.</Notice>}
+      {kind === 'kpi' && (
+        <BadgeNotice>A badge returns one row, so these are kept for when the card becomes a chart.</BadgeNotice>
+      )}
     </Group>
   )
 }
@@ -327,7 +339,7 @@ export function SortSection({ draft, columns, setCard, setOption, kind }: Ctx) {
 /* ------------------------------------------------------------------ Period */
 
 export function DateGrainSection({ kind, draft, catalogue, setDateGrain }: Ctx) {
-  const grain = (kind === 'kpi' ? draft.series?.main?.dateGrain : draft.dateGrain) ?? undefined
+  const grain = draft.dateGrain
   const all = catalogue?.columns ?? []
   const dateish = all.filter((c) => c.isDate || (c.isString && catalogue?.dateParse?.[c.name]))
   const others = all.filter((c) => !dateish.includes(c))
@@ -390,19 +402,19 @@ export function DateGrainSection({ kind, draft, catalogue, setDateGrain }: Ctx) 
   )
 }
 
-/* -------------------------------------------------------------- Chart type */
+/* ---------------------------------------------------------------- Card type */
 
-export function ChartTypeSection({ draft, setCard, kind }: Ctx) {
-  if (kind === 'kpi') return null
-  // One entry per renderable chart, not per accepted alias.
-  const current = findRegistration(draft.chartType ?? '')
+export function CardTypeSection({ draft, setCard }: Ctx) {
+  // One entry per renderable card, not per accepted alias. Picking the badge
+  // turns a chart into a KPI, and picking a chart turns a KPI back.
+  const current = findRegistration(draft.chartType)
 
   return (
-    <Group title="Chart type">
+    <Group title="Card type">
       <div className="grid grid-cols-2 gap-2">
-        {chartRegistry.map((registration) => {
+        {cardRegistry.map((registration) => {
           const active = current === registration
-          const Icon = CHART_ICONS[registration.kind] ?? BarChart3
+          const Icon = CARD_ICONS[registration.kind] ?? BarChart3
           return (
             <button
               key={registration.kind}
@@ -427,7 +439,7 @@ export function ChartTypeSection({ draft, setCard, kind }: Ctx) {
 /* ------------------------------------------------------------------ Colours */
 
 export function ColorSection({ kind, draft, columns, setOption }: Ctx) {
-  if (kind === 'kpi') return null
+  const isKpi = kind === 'kpi'
   const colorMap = ((draft.options ?? {}).colorMapping as Record<string, string>) ?? {}
   const valueCols = columns.filter((c) => (c.mapping ?? 'VALUE') === 'VALUE').map((c) => c.column)
   const setMap = (next: Record<string, string>) =>
@@ -436,7 +448,7 @@ export function ColorSection({ kind, draft, columns, setOption }: Ctx) {
   return (
     <>
       <Group
-        title="Series colours"
+        title={isKpi ? 'Accent colour' : 'Series colours'}
         action={
           <button
             type="button"
@@ -492,9 +504,14 @@ export function ColorSection({ kind, draft, columns, setOption }: Ctx) {
             </div>
           ))}
           {!Object.keys(colorMap).length && (
-            <p className="text-[12px] text-slate-400">Using the default palette</p>
+            <p className="text-[12px] text-slate-400">
+              {isKpi ? 'Using the default accent' : 'Using the default palette'}
+            </p>
           )}
         </div>
+        {isKpi && (
+          <BadgeNotice>The colour set for the value field tints the badge&apos;s accent bar.</BadgeNotice>
+        )}
       </Group>
 
       <Group title="Display">
@@ -515,6 +532,7 @@ export function ColorSection({ kind, draft, columns, setOption }: Ctx) {
             />
           ))}
         </div>
+        {isKpi && <BadgeNotice>These shape a plotted chart; a badge has no axes to apply them to.</BadgeNotice>}
       </Group>
     </>
   )
@@ -602,6 +620,9 @@ export function PropertiesSection({ kind, draft, setCard }: Ctx) {
             </select>
           </Field>
         </div>
+        {draft.columns?.some((c) => c.format && Object.keys(c.format).length > 0) && (
+          <Notice>A field on this card carries its own format, which wins over this one.</Notice>
+        )}
       </Group>
 
       {kind === 'kpi' && (

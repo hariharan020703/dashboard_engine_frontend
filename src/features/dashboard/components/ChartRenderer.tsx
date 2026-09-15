@@ -1,6 +1,6 @@
 import { Pencil } from 'lucide-react'
 import type { RenderChart } from '../types/dashboard'
-import { findRegistration } from './chartRegistry'
+import { findRegistration } from './cardRegistry'
 
 function UnknownChart({ chartType, title }: { chartType: string; title: string }) {
   return (
@@ -24,7 +24,7 @@ export default function ChartRenderer({ spec, onEdit }: { spec: RenderChart; onE
         No data
       </div>
     )
-  } else if (!registration) {
+  } else if (!registration?.component) {
     body = <UnknownChart chartType={spec.chartType} title={spec.title} />
   } else {
     const Component = registration.component

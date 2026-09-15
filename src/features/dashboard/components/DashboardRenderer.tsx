@@ -1,9 +1,16 @@
 import { useState } from 'react'
-import type { DashboardLayout, HydratedDashboardView, CardDefinition } from '../types/dashboard'
+import type {
+  DashboardLayout,
+  HydratedChart,
+  HydratedDashboardView,
+  HydratedKpi,
+  CardDefinition,
+} from '../types/dashboard'
 import KpiCard from './KpiCard'
 import ChartRenderer from './ChartRenderer'
 import CardEditor from './editor/CardEditor'
 import SlicerBar from './SlicerBar'
+import { cardKindOf } from './cardRegistry'
 import { GRID_COLS, SPAN_CLASSES, GAP_CLASSES } from '../utils/grid'
 import { buildFilters } from '../utils/filters'
 
@@ -12,11 +19,11 @@ interface Props {
   selections: Record<string, Set<string>>
   onSlicerChange: (id: string, selected: Set<string>) => void
   onClearAll: () => void
-  onCardEdit: (kind: 'kpi' | 'chart', index: number, card: CardDefinition) => void
+  onCardEdit: (index: number, card: CardDefinition) => void
 }
 
 export default function DashboardRenderer({ view, selections, onSlicerChange, onClearAll, onCardEdit }: Props) {
-  const { dashboard, kpis, cards, slicers, layout: rawLayout } = view
+  const { dashboard, cards, slicers, layout: rawLayout } = view
   const layout: DashboardLayout = rawLayout ?? {}
   const gap = GAP_CLASSES[layout.gap || 'md'] || GAP_CLASSES.md
   const kpiSpan = layout.kpi?.span ?? 3
@@ -24,13 +31,13 @@ export default function DashboardRenderer({ view, selections, onSlicerChange, on
   const chartSpan = layout.chart?.span ?? 6
   const gridClass = GRID_COLS[layout.cols || 12] || GRID_COLS[12]
 
-  const [editing, setEditing] = useState<{ kind: 'kpi' | 'chart'; index: number; card: CardDefinition } | null>(null)
+  const [editing, setEditing] = useState<{ index: number; card: CardDefinition } | null>(null)
   // The editor previews against the same filters the dashboard is showing.
   const activeFilters = buildFilters(selections)
 
   const handleSave = (updated: CardDefinition) => {
     if (!editing) return
-    onCardEdit(editing.kind, editing.index, updated)
+    onCardEdit(editing.index, updated)
     setEditing(null)
   }
 
@@ -51,32 +58,29 @@ export default function DashboardRenderer({ view, selections, onSlicerChange, on
         onClearAll={onClearAll}
       />
 
-      {kpis.length > 0 && (
-        <section className={`mb-6 grid grid-cols-1 ${gap} sm:grid-cols-2 ${gridClass}`}>
-          {kpis.map((kpi, i) => {
-            const span = kpi.spec?.layout?.span ?? kpiSpan
-            return (
-              <div key={kpi.id} className={SPAN_CLASSES[span] || SPAN_CLASSES[kpiSpan]}>
-                <KpiCard
-                  kpi={kpi}
-                  minHeight={kpiMinHeight}
-                  onEdit={() => setEditing({ kind: 'kpi', index: i, card: kpi.spec! })}
-                />
-              </div>
-            )
-          })}
-        </section>
-      )}
-
-      <section className={`grid grid-cols-1 ${gap} ${gridClass}`}>
+      {/*
+        One grid for the whole dashboard: KPIs and charts are the same list, and
+        each card's chartType decides which renderer it gets. Below `lg` the
+        spans collapse, so badges pair up two per row and charts take the width.
+      */}
+      <section className={`grid grid-cols-1 ${gap} sm:grid-cols-2 ${gridClass}`}>
         {cards.map((card, i) => {
-          const span = card.spec?.layout?.span ?? chartSpan
+          const isKpi = cardKindOf(card.chartType) === 'kpi'
+          const fallbackSpan = isKpi ? kpiSpan : chartSpan
+          const span = card.spec?.layout?.span ?? fallbackSpan
+          const onEdit = () => setEditing({ index: i, card: card.spec! })
           return (
-            <div key={card.id} className={SPAN_CLASSES[span] || SPAN_CLASSES[chartSpan]}>
-              <ChartRenderer
-                spec={card}
-                onEdit={() => setEditing({ kind: 'chart', index: i, card: card.spec! })}
-              />
+            <div
+              key={card.id}
+              className={`${isKpi ? 'sm:col-span-1' : 'sm:col-span-2'} ${
+                SPAN_CLASSES[span] || SPAN_CLASSES[fallbackSpan]
+              }`}
+            >
+              {isKpi ? (
+                <KpiCard kpi={card as HydratedKpi} minHeight={kpiMinHeight} onEdit={onEdit} />
+              ) : (
+                <ChartRenderer spec={card as HydratedChart} onEdit={onEdit} />
+              )}
             </div>
           )
         })}
@@ -85,7 +89,6 @@ export default function DashboardRenderer({ view, selections, onSlicerChange, on
       {editing && (
         <CardEditor
           card={editing.card}
-          kind={editing.kind}
           filters={activeFilters}
           onSave={handleSave}
           onClose={() => setEditing(null)}

@@ -1,11 +1,18 @@
 import { AlertCircle, Loader2, RotateCw } from 'lucide-react'
-import type { CardDefinition, PreviewResult, RenderChart, HydratedKpi } from '../../types/dashboard'
+import type {
+  CardDefinition,
+  CardKind,
+  PreviewResult,
+  RenderChart,
+  HydratedKpi,
+} from '../../types/dashboard'
 import ChartRenderer from '../ChartRenderer'
 import KpiCard from '../KpiCard'
 import { CATEGORY_MAPPINGS } from './cardModel'
 
 interface Props {
-  kind: 'kpi' | 'chart'
+  /** How the draft last came back from the engine, not what it looks like. */
+  kind: CardKind
   draft: CardDefinition
   preview: PreviewResult | null
   pending: boolean
@@ -22,14 +29,14 @@ function MappingBar({
   onJump,
 }: {
   draft: CardDefinition
-  kind: 'kpi' | 'chart'
+  kind: CardKind
   onJump: () => void
 }) {
-  const cols = (kind === 'kpi' ? draft.series?.main?.columns : draft.columns) ?? []
+  const cols = draft.columns ?? []
   const category = cols.find((c) => CATEGORY_MAPPINGS.includes(c.mapping ?? ''))
   const series = cols.find((c) => c.mapping === 'SERIES')
   const values = cols.filter((c) => c.mapping === 'VALUE')
-  const grain = (kind === 'kpi' ? draft.series?.main?.dateGrain : draft.dateGrain) ?? undefined
+  const grain = draft.dateGrain
 
   const slots: Array<[string, string]> =
     kind === 'chart'
@@ -128,10 +135,7 @@ export default function EditorPreview({
           </div>
         ) : (
           <div className="max-w-xs">
-            <KpiCard
-              kpi={preview.visual as HydratedKpi & { comparison: Required<HydratedKpi>['comparison'] }}
-              minHeight={130}
-            />
+            <KpiCard kpi={preview.visual as HydratedKpi} minHeight={130} />
           </div>
         )}
       </div>
