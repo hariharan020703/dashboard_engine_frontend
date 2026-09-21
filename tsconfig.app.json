@@ -16,6 +16,10 @@
     "noEmit": true,
     "jsx": "react-jsx",
 
+    /* Absolute imports: @/x resolves to src/x (mirrored in vite.config.ts).
+       Paths resolve relative to this file, so no deprecated baseUrl is needed. */
+    "paths": { "@/*": ["./src/*"] },
+
     /* Linting */
     "noUnusedLocals": true,
     "noUnusedParameters": true,
