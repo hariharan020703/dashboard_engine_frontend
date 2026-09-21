@@ -19,6 +19,9 @@ import UsersPage from '@/pages/admin/UsersPage'
 import PlatformOverviewPage from '@/pages/platform/PlatformOverviewPage'
 import AuditLogPage from '@/pages/platform/AuditLogPage'
 import PlatformSettingsPage from '@/pages/platform/PlatformSettingsPage'
+import ContextLayerPage from '@/modules/context-layer/ContextLayerPage'
+import ConnectionDatasetsPage from '@/modules/context-layer/ConnectionDatasetsPage'
+import DataAnalystAgentPage from '@/modules/data-analyst-agent/DataAnalystAgentPage'
 import WorkspaceOverviewPage from '@/pages/workspace/WorkspaceOverviewPage'
 import AccessMatrixPage from '@/pages/workspace/AccessMatrixPage'
 import CompanySettingsPage from '@/pages/workspace/CompanySettingsPage'
@@ -188,6 +191,23 @@ export default function App() {
                   </RequirePermission>
                 }
               />
+              <Route
+                path="context"
+                element={
+                  <RequirePermission permission="context.read">
+                    <ContextLayerPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="context/connections/:id"
+                element={
+                  <RequirePermission permission="context.read">
+                    <ConnectionDatasetsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route path="agent" element={<DataAnalystAgentPage />} />
               <Route path="dashboards" element={<HomePage />} />
               <Route
                 path="data"
@@ -216,6 +236,25 @@ export default function App() {
                   </RequirePermission>
                 }
               />
+
+              {/* Feature modules - src/modules/<feature> */}
+              <Route
+                path="/context"
+                element={
+                  <RequirePermission permission="context.read">
+                    <ContextLayerPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/context/connections/:id"
+                element={
+                  <RequirePermission permission="context.read">
+                    <ConnectionDatasetsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route path="/agent" element={<DataAnalystAgentPage />} />
 
               <Route
                 path="/team/users"

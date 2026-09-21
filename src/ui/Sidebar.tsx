@@ -1,11 +1,13 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
+  Bot,
   Building2,
   ChartColumn,
   Database,
   Home,
   KeyRound,
+  Layers,
   LayoutDashboard,
   Settings,
   ShieldCheck,
@@ -65,6 +67,13 @@ export default function Sidebar({
       ],
     },
     {
+      title: 'INTELLIGENCE',
+      items: [
+        { label: 'Context Layer', path: '/platform/context', icon: Layers, permission: 'context.read' },
+        { label: 'Data Analyst Agent', path: '/platform/agent', icon: Bot },
+      ],
+    },
+    {
       title: 'ACCESS',
       items: [
         { label: 'Roles & RBAC', path: '/platform/roles', icon: ShieldCheck, permission: 'role.read' },
@@ -86,6 +95,13 @@ export default function Sidebar({
       items: [
         { label: 'Overview', path: '/workspace', icon: Home, exact: true },
         { label: 'Data Catalog', path: '/data', icon: Database, permission: 'data.read' },
+      ],
+    },
+    {
+      title: 'INTELLIGENCE',
+      items: [
+        { label: 'Context Layer', path: '/context', icon: Layers, permission: 'context.read' },
+        { label: 'Data Analyst Agent', path: '/agent', icon: Bot },
       ],
     },
     {
