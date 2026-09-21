@@ -3,15 +3,6 @@ import { AlertTriangle, LoaderCircle } from 'lucide-react'
 import Modal from './Modal'
 import { actionButtonCls, actionDangerCls, actionPrimaryCls } from './styles'
 
-/**
- * Asks before something irreversible.
- *
- * Replaces the `window.confirm` calls the admin screens used. Those cannot say
- * what the consequence is beyond one line of plain text, cannot be styled to
- * signal danger, are blocked outright in some embedded browsers, and give no
- * way to show that the action is in progress once it is accepted - so a slow
- * delete looked like a dead button.
- */
 export default function ConfirmDialog({
   title,
   message,
@@ -23,11 +14,9 @@ export default function ConfirmDialog({
 }: {
   title: string
   message: string
-  /** The part that cannot be undone, called out separately from the question. */
   consequence?: string
   confirmLabel?: string
   destructive?: boolean
-  /** Awaited, so the dialog can stay up and disabled while the work happens. */
   onConfirm: () => Promise<void> | void
   onClose: () => void
 }) {

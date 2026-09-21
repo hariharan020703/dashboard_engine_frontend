@@ -3,7 +3,6 @@ import type { HydratedKpi } from '@/types/dashboard'
 
 interface Props {
   kpi: HydratedKpi
-  /** Gradient used when the card declares no colour of its own. */
   accent?: string
   minHeight?: number
   onEdit?: () => void

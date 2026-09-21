@@ -5,19 +5,11 @@ import { NAV_SECTIONS, isNavItemActive, visibleNav } from '@/app/navigation'
 import { dedupeDashboards } from '@/services/dashboards'
 import type { AccessibleDashboard } from '@/types/auth'
 
-/**
- * The application's one navigation rail.
- *
- * There is deliberately no AdminSidebar/AnalystSidebar split: the items come
- * from the navigation table and are filtered by the permissions the backend
- * reports for this user, so a new role needs no change here at all.
- */
 export default function AppSidebar({
   dashboards,
   onNavigate,
 }: {
   dashboards: AccessibleDashboard[]
-  /** Lets the mobile drawer close itself after a link is followed. */
   onNavigate?: () => void
 }) {
   const { can } = useAuth()

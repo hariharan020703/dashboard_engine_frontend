@@ -4,19 +4,6 @@ import { AlertTriangle, CheckCircle2, Info, X, XCircle } from 'lucide-react'
 import { NotificationContext } from './notificationContext'
 import type { Notification, NotificationApi, NotificationTone } from './notificationContext'
 
-/**
- * The application's one feedback mechanism.
- *
- * Every action the user starts - create, save, grant, revoke, activate, sign
- * in, sign out - reports its outcome here, so no screen has to grow its own
- * banner state and none can quietly report nothing at all.
- *
- * Rendered in an aria-live region so the outcome reaches a screen reader too.
- * An error is `assertive` and stays until dismissed, because it usually means
- * the user's work did not happen and they need to decide what to do; everything
- * else is `polite` and clears itself.
- */
-
 const TONE_STYLE: Record<NotificationTone, { wrap: string; icon: typeof Info; iconCls: string }> = {
   success: {
     wrap: 'border-emerald-200 bg-emerald-50 text-emerald-900',
@@ -40,7 +27,6 @@ const TONE_STYLE: Record<NotificationTone, { wrap: string; icon: typeof Info; ic
   },
 }
 
-/** How long each tone stays up. Errors do not expire. */
 const LIFETIME_MS: Record<NotificationTone, number | null> = {
   success: 4000,
   info: 4000,

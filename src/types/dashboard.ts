@@ -97,11 +97,6 @@ export interface SlicerDef {
   sort?: 'asc' | 'desc'
 }
 
-/**
- * One card on a dashboard. KPIs and charts share this single shape — chartType
- * is what decides which of the two a card renders as, so every editing option
- * applies to every card.
- */
 export interface CardDefinition {
   id: string
   name: string
@@ -133,7 +128,6 @@ export interface HydratedKpi {
   description?: string
   value: number
   text: string
-  /** Accent colour chosen in the editor, or null for the card's default. */
   color?: string | null
   format?: CardFormat
   comparison: {
@@ -153,7 +147,6 @@ export interface HydratedChart extends RenderChart {
   spec?: CardDefinition
 }
 
-/** A hydrated card is whichever of the two its chartType selected. */
 export type HydratedCard = HydratedKpi | HydratedChart
 
 export interface HydratedSlicerOption {
@@ -177,13 +170,6 @@ export interface HydratedDashboardView {
   layout?: DashboardLayout
   cards: HydratedCard[]
   slicers: HydratedSlicer[]
-  /**
-   * The caller's own level on this dashboard, as the backend resolved it.
-   *
-   * Travels with the view so a screen can decide what to offer without a second
-   * round trip, and so the answer it uses is the same one the API enforced on
-   * the request that produced these cards.
-   */
   accessLevel: AccessLevel
 }
 
@@ -221,7 +207,6 @@ export interface RenderAxis {
   key: string
   name?: string
   type?: 'category' | 'number'
-  /** Precomputed by the backend; the chart renders these rather than deriving its own. */
   ticks?: AxisTick[]
 }
 
@@ -242,10 +227,8 @@ export interface RenderChart {
   series: RenderSeries[]
   options: Record<string, unknown>
 }
-/** Slicer id -> the set of values the user has selected. */
 export type Selections = Record<string, Set<string>>
 
-/** One column of the dashboard's source table, as reported by the backend. */
 export interface SourceColumn {
   name: string
   type: string
@@ -257,11 +240,9 @@ export interface SourceColumn {
   role: 'measure' | 'dimension'
 }
 
-/** GET /api/dashboard/columns — the catalogue the card editor picks fields from. */
 export interface ColumnCatalogue {
   dashboardId: string
   database: string
-  /** The PostgreSQL schema the table lives in; 'public' unless the spec says otherwise. */
   schema: string
   table: string
   rowCount: number
@@ -270,9 +251,7 @@ export interface ColumnCatalogue {
   columns: SourceColumn[]
 }
 
-/** POST /api/dashboard/preview — a draft card run through the real engine. */
 export interface PreviewResult {
-  /** Derived server-side from the draft's chartType. */
   kind: CardKind
   visual: (RenderChart & { error?: unknown }) | (HydratedKpi & { error?: unknown }) | null
   error: { stage: string; message: string } | null

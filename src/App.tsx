@@ -1,9 +1,10 @@
 import type { ReactElement } from 'react'
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom'
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom'
 import AuthProvider from '@/context/AuthProvider'
 import { useAuth } from '@/context/authContext'
 import NotificationProvider from '@/ui/NotificationProvider'
-import AppLayout from '@/layouts/AppLayout'
+import PlatformLayout from '@/layouts/PlatformLayout'
+import WorkspaceLayout from '@/layouts/WorkspaceLayout'
 import ActivatePage from '@/pages/ActivatePage'
 import DashboardPage from '@/pages/DashboardPage'
 import DataPage from '@/pages/DataPage'
@@ -15,25 +16,14 @@ import GroupsPage from '@/pages/admin/GroupsPage'
 import RolesPage from '@/pages/admin/RolesPage'
 import UserDetailPage from '@/pages/admin/UserDetailPage'
 import UsersPage from '@/pages/admin/UsersPage'
+import PlatformOverviewPage from '@/pages/platform/PlatformOverviewPage'
+import AuditLogPage from '@/pages/platform/AuditLogPage'
+import PlatformSettingsPage from '@/pages/platform/PlatformSettingsPage'
+import WorkspaceOverviewPage from '@/pages/workspace/WorkspaceOverviewPage'
+import AccessMatrixPage from '@/pages/workspace/AccessMatrixPage'
+import CompanySettingsPage from '@/pages/workspace/CompanySettingsPage'
 import { PageHeader, Panel } from '@/ui/page'
 
-/**
- * The application's routes.
- *
- * Two public routes and one authenticated shell, and inside it only the screens
- * the product actually has. There is no route per concept: dashboards are one
- * parameterised route serving every dashboard the registry knows about, a
- * company's detail is part of the companies screen, and the forced password
- * change is a state AppLayout renders rather than a place you can navigate to.
- */
-
-/**
- * Keeps a screen behind the same permission its API requires.
- *
- * The backend already rejects the calls these pages make, so this is not the
- * security boundary - it is here so somebody who types the URL gets an honest
- * answer instead of a screen of failed requests.
- */
 function RequirePermission({
   permission,
   children,
@@ -46,37 +36,87 @@ function RequirePermission({
 
   return (
     <div className="p-6">
-      <PageHeader title="Not available" />
+      <PageHeader title="Access Restricted" />
       <Panel>
         <p className="text-sm text-slate-600">
-          Your role does not hold the <code className="text-slate-800">{permission}</code>{' '}
-          permission, so this area is not available to you.
+          Your assigned role does not hold the <code className="text-slate-800 font-mono">{permission}</code>{' '}
+          permission, so this area cannot be accessed.
         </p>
-        <p className="mt-2 text-[13px] text-slate-500">
-          An administrator can change what your role may do.
+        <p className="mt-2 text-xs text-slate-400">
+          An administrator can adjust what your role is permitted to perform.
         </p>
       </Panel>
     </div>
   )
 }
 
-/** The login screen, or straight past it when there is already a session. */
+function RootDispatcher() {
+  const { status, user } = useAuth()
+  if (status === 'RESTORING') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 text-xs text-slate-500">
+        Connecting to session…
+      </div>
+    )
+  }
+  if (status !== 'AUTHENTICATED' && status !== 'PASSWORD_CHANGE_REQUIRED') {
+    return <Navigate to="/login" replace />
+  }
+  if (user?.role === 'SUPER_ADMIN') {
+    return <Navigate to="/platform" replace />
+  }
+  return <Navigate to="/workspace" replace />
+}
+
 function LoginRoute() {
-  const { status } = useAuth()
+  const { status, user } = useAuth()
   if (status === 'AUTHENTICATED' || status === 'PASSWORD_CHANGE_REQUIRED') {
-    return <Navigate to="/" replace />
+    if (user?.role === 'SUPER_ADMIN') {
+      return <Navigate to="/platform" replace />
+    }
+    return <Navigate to="/workspace" replace />
   }
   return <LoginPage />
 }
 
+function LegacyUserRedirect() {
+  const { user } = useAuth()
+  const { id } = useParams()
+  const isPlatform = user?.role === 'SUPER_ADMIN'
+  const target = id
+    ? isPlatform
+      ? `/platform/users/${id}`
+      : `/team/users/${id}`
+    : isPlatform
+    ? '/platform/users'
+    : '/team/users'
+  return <Navigate to={target} replace />
+}
+
+function LegacyGroupRedirect() {
+  const { user } = useAuth()
+  const isPlatform = user?.role === 'SUPER_ADMIN'
+  return <Navigate to={isPlatform ? '/platform/groups' : '/team/groups'} replace />
+}
+
 function NotFoundRoute() {
+  const { user } = useAuth()
+  const homePath = user?.role === 'SUPER_ADMIN' ? '/platform' : '/workspace'
   return (
     <div className="p-6">
-      <PageHeader title="Page not found" />
+      <PageHeader title="Page Not Found" />
       <Panel>
         <p className="text-sm text-slate-600">
-          There is nothing at this address. Use the navigation to get back to your dashboards.
+          There is nothing at this web address.
         </p>
+        <div className="mt-4">
+          <a
+            href={homePath}
+            className="rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+          >
+            Return to Dashboard Hub
+          </a>
+        </div>
       </Panel>
     </div>
   )
@@ -84,21 +124,88 @@ function NotFoundRoute() {
 
 export default function App() {
   return (
-    /*
-     * Notifications wrap authentication, not the other way round: AuthProvider
-     * reports an expired or withdrawn session through the same mechanism every
-     * other action uses, so it has to be able to reach it.
-     */
     <NotificationProvider>
       <AuthProvider>
         <BrowserRouter>
           <Routes>
+            {/* Public Entry Points */}
             <Route path="/login" element={<LoginRoute />} />
-            {/* Public: reached from an email link by somebody with no session. */}
             <Route path="/activate" element={<ActivatePage />} />
 
-            <Route element={<AppLayout />}>
-              <Route path="/" element={<HomePage />} />
+            {/* Smart Root Dispatcher */}
+            <Route path="/" element={<RootDispatcher />} />
+
+            {/* ========================================================= */}
+            {/* PLATFORM CONSOLE (SUPER_ADMIN ONLY)                       */}
+            {/* ========================================================= */}
+            <Route path="/platform" element={<PlatformLayout />}>
+              <Route index element={<PlatformOverviewPage />} />
+              <Route
+                path="companies"
+                element={
+                  <RequirePermission permission="company.read">
+                    <CompaniesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="companies/:id"
+                element={
+                  <RequirePermission permission="company.read">
+                    <CompaniesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="users"
+                element={
+                  <RequirePermission permission="user.read">
+                    <UsersPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="users/:id"
+                element={
+                  <RequirePermission permission="user.read">
+                    <UserDetailPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="roles"
+                element={
+                  <RequirePermission permission="role.read">
+                    <RolesPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="groups"
+                element={
+                  <RequirePermission permission="group.read">
+                    <GroupsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route path="dashboards" element={<HomePage />} />
+              <Route
+                path="data"
+                element={
+                  <RequirePermission permission="data.read">
+                    <DataPage />
+                  </RequirePermission>
+                }
+              />
+              <Route path="audit" element={<AuditLogPage />} />
+              <Route path="settings" element={<PlatformSettingsPage />} />
+            </Route>
+
+            {/* ========================================================= */}
+            {/* CUSTOMER TENANT WORKSPACE (COMPANY_ADMIN & USER)           */}
+            {/* ========================================================= */}
+            <Route element={<WorkspaceLayout />}>
+              <Route path="/workspace" element={<WorkspaceOverviewPage />} />
               <Route path="/dashboards/:dashboardId" element={<DashboardPage />} />
 
               <Route
@@ -110,18 +217,8 @@ export default function App() {
                 }
               />
 
-              <Route path="/profile" element={<ProfilePage />} />
-
               <Route
-                path="/admin/companies"
-                element={
-                  <RequirePermission permission="company.read">
-                    <CompaniesPage />
-                  </RequirePermission>
-                }
-              />
-              <Route
-                path="/admin/users"
+                path="/team/users"
                 element={
                   <RequirePermission permission="user.read">
                     <UsersPage />
@@ -129,7 +226,7 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/users/:id"
+                path="/team/users/:id"
                 element={
                   <RequirePermission permission="user.read">
                     <UserDetailPage />
@@ -137,7 +234,7 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/groups"
+                path="/team/groups"
                 element={
                   <RequirePermission permission="group.read">
                     <GroupsPage />
@@ -145,13 +242,31 @@ export default function App() {
                 }
               />
               <Route
-                path="/admin/roles"
+                path="/team/access"
                 element={
-                  <RequirePermission permission="role.read">
-                    <RolesPage />
+                  <RequirePermission permission="access.read">
+                    <AccessMatrixPage />
                   </RequirePermission>
                 }
               />
+
+              <Route
+                path="/settings/company"
+                element={
+                  <RequirePermission permission="company.read">
+                    <CompanySettingsPage />
+                  </RequirePermission>
+                }
+              />
+              <Route path="/settings/profile" element={<ProfilePage />} />
+              <Route path="/profile" element={<Navigate to="/settings/profile" replace />} />
+
+              {/* Legacy Route Redirects */}
+              <Route path="/admin/companies" element={<Navigate to="/platform/companies" replace />} />
+              <Route path="/admin/users" element={<LegacyUserRedirect />} />
+              <Route path="/admin/users/:id" element={<LegacyUserRedirect />} />
+              <Route path="/admin/groups" element={<LegacyGroupRedirect />} />
+              <Route path="/admin/roles" element={<Navigate to="/platform/roles" replace />} />
 
               <Route path="*" element={<NotFoundRoute />} />
             </Route>

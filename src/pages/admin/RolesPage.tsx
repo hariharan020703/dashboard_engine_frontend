@@ -12,20 +12,6 @@ import { actionPrimaryCls, labelCls } from '@/ui/styles'
 import type { PermissionDef, Role, RolePermissions } from '@/types/admin'
 import type { RoleName } from '@/types/auth'
 
-/**
- * The three roles, and what each of them may do.
- *
- * There is no "new role" button, deliberately. The business model names exactly
- * SUPER_ADMIN, COMPANY_ADMIN and USER, and a fourth would have no defined
- * answer to the only question that matters - whether it is bounded by a company
- * or not. The backend refuses to create one for the same reason.
- *
- * What remains editable is the permission set of the two company roles, which
- * is genuine configuration. SUPER_ADMIN is shown read-only because the backend
- * answers its permissions from the catalogue rather than the table: it always
- * holds everything, so a bad edit can never lock the platform out of the screen
- * that would undo it.
- */
 export default function RolesPage() {
   const { can } = useAuth()
   const notify = useNotification()

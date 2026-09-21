@@ -3,7 +3,6 @@ import { ROLE_LABELS } from './roleLabels'
 import { Badge } from '@/ui/page'
 import type { BadgeTone } from '@/ui/page'
 
-/** A role, always shown the same way. */
 const TONE: Record<RoleName, BadgeTone> = {
   SUPER_ADMIN: 'success',
   COMPANY_ADMIN: 'info',

@@ -6,18 +6,6 @@ import type {
   PreviewResult,
 } from '@/types/dashboard'
 
-/**
- * The dashboard API. The frontend never sends table or column names - only a
- * dashboard id, slicer ids and the values the user picked; everything
- * structural comes from the dashboard JSON, resolved server-side by the
- * unchanged query engine.
- *
- * These endpoints are authenticated and access-checked now. A dashboard the
- * caller's company has not been assigned, or that they hold no grant on, comes
- * back as a 404 before any SQL is planned - so there is no id to guess that
- * would reach another company's data.
- */
-
 function filterQuery(filters: Record<string, string[]>): string {
   const qs = Object.entries(filters)
     .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v.join(','))}`)

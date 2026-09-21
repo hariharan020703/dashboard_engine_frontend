@@ -1,10 +1,3 @@
-/**
- * A wrap of toggleable chips: pick any number of values from a short list.
- * Shared by the group membership editor and the data-scope editor.
- *
- * Items are matched on the key `keyOf` returns, so a list of ids and a list of
- * strings both work without the caller converting anything.
- */
 export default function ChipSelect<T>({
   options,
   selected,
@@ -20,7 +13,6 @@ export default function ChipSelect<T>({
   keyOf: (option: T) => string | number
   labelOf: (option: T) => string
   disabled?: boolean
-  /** Shown instead of the chips when there is nothing to choose from. */
   emptyMessage: string
 }) {
   if (!options.length) return <p className="text-[13px] text-slate-400">{emptyMessage}</p>

@@ -1,14 +1,6 @@
 import type { ReactNode } from 'react'
 import { LoaderCircle } from 'lucide-react'
 
-/**
- * Page furniture: the frame every routed screen sits in.
- *
- * Generic on purpose — nothing here knows about auth, dashboards or the admin
- * directory, so the same four pieces carry the analytics screens and the RBAC
- * screens without either borrowing the other's vocabulary.
- */
-
 export function PageHeader({
   title,
   description,
@@ -29,7 +21,6 @@ export function PageHeader({
   )
 }
 
-/** A titled white surface. `flush` drops the padding for tables that own it. */
 export function Panel({
   title,
   description,

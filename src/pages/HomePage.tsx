@@ -7,13 +7,6 @@ import AccessLevelBadge from '@/components/rbac/AccessLevelBadge'
 import RoleBadge from '@/components/rbac/RoleBadge'
 import { EmptyState, PageHeader, Panel } from '@/ui/page'
 
-/**
- * Where a signed-in user lands: what they may open, and where else they may go.
- *
- * Both lists come from the backend's own answers - the dashboards from their
- * grants, the areas from their role's permissions - so this screen never has to
- * know what a role is called or which company it belongs to.
- */
 export default function HomePage() {
   const { user, dashboards, can } = useAuth()
   const listed = dedupeDashboards(dashboards)

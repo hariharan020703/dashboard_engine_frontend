@@ -1,20 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { KeyRound, LogOut, ShieldCheck, User } from 'lucide-react'
+import { KeyRound, LogOut, User } from 'lucide-react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '@/context/authContext'
 import ChangePasswordForm from './ChangePasswordForm'
 import Modal from '@/ui/Modal'
-import RoleBadge from '@/components/rbac/RoleBadge'
 
-/**
- * Who is signed in, and what they can do about it.
- *
- * Rendered in the application header. Reads the session from context rather
- * than taking props, so placing it costs the shell one line and no knowledge of
- * auth.
- */
 export default function UserMenu() {
-  const { user, dashboards, signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const [open, setOpen] = useState(false)
   const [changing, setChanging] = useState(false)
   const menuRef = useRef<HTMLDivElement>(null)
@@ -57,7 +49,6 @@ export default function UserMenu() {
           <span className="max-w-[10rem] truncate font-medium">
             {user.displayName || user.username}
           </span>
-          <RoleBadge role={user.role} />
         </button>
 
         {open && (
@@ -68,12 +59,6 @@ export default function UserMenu() {
             <div className="border-b border-slate-100 px-3 py-2.5">
               <p className="truncate text-sm font-medium text-slate-800">{user.username}</p>
               <p className="truncate text-[11px] text-slate-400">{user.email}</p>
-              <p className="mt-1 flex items-center gap-1 text-[11px] text-slate-400">
-                <ShieldCheck size={11} />
-                {user.permissions.length} permission{user.permissions.length === 1 ? '' : 's'}
-                {' · '}
-                {dashboards.length} dashboard{dashboards.length === 1 ? '' : 's'}
-              </p>
             </div>
 
             <Link to="/profile" role="menuitem" className={itemCls} onClick={() => setOpen(false)}>
@@ -107,11 +92,6 @@ export default function UserMenu() {
 
       {changing && (
         <Modal title="Change password" onClose={() => setChanging(false)} width="max-w-sm">
-          {/*
-            The form reports its own outcome through the notification system, so
-            the dialog simply closes - there is no second confirmation step to
-            dismiss, and no in-place success message that duplicates the toast.
-          */}
           <ChangePasswordForm
             onDone={() => setChanging(false)}
             onCancel={() => setChanging(false)}

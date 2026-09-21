@@ -9,20 +9,6 @@ import { PasswordField } from '@/ui/fields'
 import { ghostButtonCls, primaryButtonCls } from '@/ui/styles'
 import { errorMessage } from '@/api/client'
 
-/**
- * The change-password form, used by both presentations: the full-screen gate an
- * account hits when somebody else set its password, and the dialog anyone can
- * open voluntarily.
- *
- * Local checks here are for fast feedback only - the backend enforces the real
- * policy, and its message is what gets shown when the two disagree.
- *
- * Changing a password ends every other session, so the backend answers with a
- * brand new one. Adopting it is not optional: the token this request was made
- * with is no longer backed by anything.
- */
-
-/** Mirrors the backend default. The server rejects anything weaker regardless. */
 const MIN_LENGTH = 8
 
 export default function ChangePasswordForm({

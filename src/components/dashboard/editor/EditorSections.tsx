@@ -36,11 +36,6 @@ const FORMAT_STYLES = [
   { value: 'percent', label: 'Percent' },
 ]
 
-/**
- * Every section is rendered for every card. Where an option only bites once the
- * card is a chart, the section says so rather than hiding itself — the card's
- * type is one click away on the Type tab.
- */
 export interface Ctx {
   kind: CardKind
   draft: CardDefinition
@@ -54,7 +49,6 @@ export interface Ctx {
   setOption: (key: string, value: unknown) => void
 }
 
-/** Shown under any control a KPI badge ignores. */
 function BadgeNotice({ children }: { children: string }) {
   return <Notice>{children}</Notice>
 }
@@ -84,8 +78,6 @@ function ColumnSelect({
     </select>
   )
 }
-
-/* -------------------------------------------------------------- Data source */
 
 export function DataSourceSection({ catalogue, draft }: Ctx) {
   const rows: Array<[string, string]> = [
@@ -130,8 +122,6 @@ export function DataSourceSection({ catalogue, draft }: Ctx) {
     </>
   )
 }
-
-/* ------------------------------------------------------------------ Fields */
 
 export function FieldsSection(ctx: Ctx) {
   const { kind, columns, catalogue, setColumn, addColumn, removeColumn } = ctx

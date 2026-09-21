@@ -2,8 +2,6 @@ import { useId, useState } from 'react'
 import { Eye, EyeOff } from 'lucide-react'
 import { inputCls, labelCls } from './styles'
 
-/** Labelled form inputs, each wiring its own label to its control via useId. */
-
 export function TextField({
   label,
   value,
@@ -11,7 +9,6 @@ export function TextField({
   autoComplete,
   autoFocus,
   disabled,
-  /** Most fields are mandatory, so the default stays true. */
   required = true,
 }: {
   label: string
@@ -42,13 +39,6 @@ export function TextField({
   )
 }
 
-/**
- * A password input with its own reveal toggle.
- *
- * The toggle is deliberately per-field: on the change-password form the three
- * boxes are independent, and revealing the new password to check a typo should
- * not also expose the current one.
- */
 export function PasswordField({
   label,
   value,

@@ -1,11 +1,3 @@
-/**
- * Control styling shared by every screen outside the dashboard canvas.
- *
- * Same split as the card editor's editorStyles.ts, and the same slate/blue
- * vocabulary — the sign-in screen, the admin tables and the dashboard should
- * not look like three different products. Sizes are a step up from the
- * editor's because these are full pages, not a side panel.
- */
 
 export const inputCls =
   'h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm text-slate-800 ' +

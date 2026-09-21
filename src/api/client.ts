@@ -1,24 +1,4 @@
-/**
- * The one place that talks to the API over HTTP.
- *
- * It owns four things no feature should repeat: the access token, unwrapping
- * the `{ success, data }` envelope, turning `{ success: false, error }` into a
- * thrown error carrying a stable code, and silently renewing an expired session
- * before the caller ever sees a failure.
- *
- * Where the tokens live, and why:
- *
- *   access token   in memory, in this module. Not localStorage - anything that
- *                  can run script on the page can read localStorage, and this
- *                  is the credential that opens every endpoint. Losing it on a
- *                  page reload is fine, because...
- *   refresh token  ...an HttpOnly cookie the browser sends only to /api/auth.
- *                  Script cannot read it at all, so a reload recovers the
- *                  session by asking the server rather than by having kept a
- *                  copy of the credential lying around.
- */
 
-/** Mirrors the backend's error codes. The UI branches on these, never on text. */
 export type ApiErrorCode =
   | 'UNAUTHENTICATED'
   | 'INVALID_CREDENTIALS'
@@ -67,8 +47,6 @@ interface ErrorEnvelope {
   error: { code: ApiErrorCode; message: string; details?: unknown }
 }
 
-/* ----------------------------------------------------------- access token --- */
-
 let accessToken: string | null = null
 
 export function setAccessToken(token: string | null): void {
@@ -79,17 +57,8 @@ export function hasAccessToken(): boolean {
   return accessToken !== null
 }
 
-/* ------------------------------------------------------------------- CSRF --- */
-
 const CSRF_COOKIE = 'da_csrf'
 
-/**
- * The CSRF token, read from the cookie the server set.
- *
- * Deliberately read from the cookie rather than remembered from the login
- * response: a refresh in another tab rotates it, and a stale copy would fail
- * the double-submit check on the next refresh in this one.
- */
 function csrfToken(): string | null {
   const match = document.cookie.match(new RegExp(`(?:^|; )${CSRF_COOKIE}=([^;]*)`))
   return match ? decodeURIComponent(match[1]) : null

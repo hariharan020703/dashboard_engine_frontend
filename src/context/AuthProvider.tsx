@@ -7,16 +7,6 @@ import { AuthContext } from './authContext'
 import type { AuthState } from './authContext'
 import type { AccessibleDashboard, AuthStatus, AuthUser, SessionResponse } from '@/types/auth'
 
-/**
- * Owns the session: the access token, the profile behind it, and every
- * transition between the authentication states.
- *
- * On mount it does NOT trust anything stored in the browser, because nothing is
- * stored in the browser. The access token lives in memory and is gone after a
- * reload; what survives is the HttpOnly refresh cookie, so the app recovers a
- * session by asking the server to mint a new access token from it. That request
- * either works or it does not, and there is no third state to guess about.
- */
 export default function AuthProvider({ children }: { children: ReactNode }) {
   const notify = useNotification()
 
@@ -26,13 +16,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [scopes, setScopes] = useState<Record<string, string[]>>({})
   const [scopesEnforced, setScopesEnforced] = useState(false)
 
-  /*
-   * Read inside the session-lost handler, which must not be re-registered every
-   * time the status changes - an in-flight request would otherwise lose the
-   * handler it was going to report to. Written in an effect rather than during
-   * render, because a render can be discarded and a ref written in one cannot
-   * be taken back.
-   */
   const statusRef = useRef(status)
   useEffect(() => {
     statusRef.current = status
@@ -46,13 +29,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setStatus(next)
   }, [])
 
-  /**
-   * Loads everything the shell needs in one call.
-   *
-   * The profile endpoint returns the user, their permissions, their scopes AND
-   * the dashboards they may open, so there is a single answer to "what is this
-   * person allowed to see" rather than three requests that can disagree.
-   */
   const applyProfile = useCallback(async () => {
     const profile = await fetchProfile()
     setUser(profile.user)
@@ -62,12 +38,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     setStatus(profile.state === 'PASSWORD_CHANGE_REQUIRED' ? 'PASSWORD_CHANGE_REQUIRED' : 'AUTHENTICATED')
   }, [])
 
-  /*
-   * Any request anywhere can discover the session is over - it expired and
-   * could not be renewed, it was revoked elsewhere, or the account was switched
-   * off. The API client reports it here so one place handles it, and the user
-   * is told why rather than being silently returned to the login screen.
-   */
   useEffect(() => {
     setSessionLostHandler((reason) => {
       // Nothing to lose, and no message worth showing, if we never got in.

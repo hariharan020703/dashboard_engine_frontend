@@ -15,27 +15,15 @@ import { GRID_COLS, SPAN_CLASSES, GAP_CLASSES } from '@/services/grid'
 import { buildFilters } from '@/services/filters'
 
 interface Props {
-  /** The dashboard being rendered; the editor needs it to catalogue columns. */
   dashboardId: string
   view: HydratedDashboardView
   selections: Record<string, Set<string>>
-  /**
-   * Whether to offer the card editor at all. Decided by the caller from the
-   * user's access level on this dashboard, not guessed at here.
-   */
   canEdit: boolean
   onSlicerChange: (id: string, selected: Set<string>) => void
   onClearAll: () => void
   onCardEdit: (index: number, card: CardDefinition) => void
 }
 
-/**
- * The dashboard canvas: slicers, then one ordered list of cards.
- *
- * Page chrome — who is signed in, the navigation, the background — belongs to
- * the application shell, so this component renders the dashboard and nothing
- * around it.
- */
 export default function DashboardRenderer({
   dashboardId,
   view,
@@ -80,11 +68,6 @@ export default function DashboardRenderer({
         onClearAll={onClearAll}
       />
 
-      {/*
-        One grid for the whole dashboard: KPIs and charts are the same list, and
-        each card's chartType decides which renderer it gets. Below `lg` the
-        spans collapse, so badges pair up two per row and charts take the width.
-      */}
       <section className={`grid grid-cols-1 ${gap} sm:grid-cols-2 ${gridClass}`}>
         {cards.map((card, i) => {
           const isKpi = cardKindOf(card.chartType) === 'kpi'

@@ -12,17 +12,6 @@ import { PasswordField } from '@/ui/fields'
 import { cardCls, primaryButtonCls } from '@/ui/styles'
 import type { ActivationTarget } from '@/types/auth'
 
-/**
- * Where an onboarding email lands: choose a password and get signed in.
- *
- * Public, because the person arriving has no session yet - possession of the
- * link is the authorisation, which is why it is single-use and expiring. The
- * token is validated against the server before the form is shown, so somebody
- * following a dead link is told so instead of typing a password into something
- * that will reject it.
- */
-
-/** Mirrors the backend default. The server rejects anything weaker regardless. */
 const MIN_LENGTH = 8
 
 export default function ActivatePage() {
@@ -40,11 +29,6 @@ export default function ActivatePage() {
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  /*
-   * A missing token is decided from the URL rather than written into state:
-   * there is nothing to fetch, so there is nothing to be checking, and both
-   * facts follow from `token` alone.
-   */
   const linkError = token
     ? fetchError
     : 'This link is missing its activation token.'
@@ -69,16 +53,6 @@ export default function ActivatePage() {
     }
   }, [token])
 
-  /*
-   * Leaves only once THIS activation has succeeded.
-   *
-   * Deliberately not "leave if a session exists". Somebody following an
-   * invitation may already be signed in as someone else - an administrator
-   * checking the link, or a shared machine - and bouncing them to that other
-   * account's home page looks like the link is broken. Possession of the link
-   * is the authorisation, so the screen is shown either way and the new session
-   * replaces whatever was there.
-   */
   if (activated) return <Navigate to="/" replace />
 
   const signedInAsSomeoneElse =

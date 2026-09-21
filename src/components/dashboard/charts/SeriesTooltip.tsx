@@ -7,10 +7,6 @@ interface SeriesPayload {
   payload?: { text?: Record<string, string> }
 }
 
-/**
- * Tooltip for multi-series charts. Values come from each point's `text` map,
- * which the backend formatted — no number or text formatting happens here.
- */
 export default function SeriesTooltip({
   active,
   label,

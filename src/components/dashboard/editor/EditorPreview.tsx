@@ -11,7 +11,6 @@ import KpiCard from '@/components/dashboard/KpiCard'
 import { CATEGORY_MAPPINGS } from '@/services/cardModel'
 
 interface Props {
-  /** How the draft last came back from the engine, not what it looks like. */
   kind: CardKind
   draft: CardDefinition
   preview: PreviewResult | null
@@ -22,7 +21,6 @@ interface Props {
   onJumpToFields: () => void
 }
 
-/** X / Y / Series summary, read off the card's field roles. */
 function MappingBar({
   draft,
   kind,

@@ -7,22 +7,6 @@ import { useAuth } from '@/context/authContext'
 import AppSidebar from './AppSidebar'
 import type { AppData } from './appOutlet'
 
-/**
- * The authenticated shell: navigation, header, page.
- *
- * It holds no business logic. Its whole job is the four things every signed-in
- * screen needs - that there IS a session, that the session is usable, what the
- * user may navigate to, and where the page goes - so no page has to repeat any
- * of it.
- *
- * The dashboard list is no longer fetched here. It arrives with the profile, in
- * the same response as the user and their permissions, so there is one answer
- * to "what may this person see" rather than two requests that can disagree.
- *
- * The forced password change is handled here rather than as a route: it is a
- * state of the account, not a place in the app, and a user who can navigate
- * away from it is a user who never changes their password.
- */
 export default function AppLayout() {
   const { status, user, dashboards, refresh } = useAuth()
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -46,8 +30,8 @@ export default function AppLayout() {
   const context: AppData = { dashboards, reload: refresh }
 
   return (
-    <div className="flex min-h-screen bg-slate-100">
-      <div className="hidden md:block">
+    <div className="flex h-screen w-screen overflow-hidden bg-slate-100">
+      <div className="hidden h-full flex-shrink-0 md:block">
         <AppSidebar dashboards={dashboards} />
       </div>
 
@@ -64,8 +48,8 @@ export default function AppLayout() {
         </div>
       )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
+      <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+        <header className="flex-shrink-0 flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-4 py-2.5">
           <button
             type="button"
             className="grid h-9 w-9 place-items-center rounded-md text-slate-500 hover:bg-slate-100 md:hidden"
@@ -84,7 +68,7 @@ export default function AppLayout() {
           <UserMenu />
         </header>
 
-        <main className="min-w-0 flex-1">
+        <main className="min-w-0 flex-1 overflow-y-auto">
           <Outlet context={context} />
         </main>
       </div>

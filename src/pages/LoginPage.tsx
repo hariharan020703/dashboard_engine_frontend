@@ -9,15 +9,6 @@ import { PasswordField, TextField } from '@/ui/fields'
 import { cardCls, primaryButtonCls } from '@/ui/styles'
 import { errorCode, errorMessage } from '@/api/client'
 
-/**
- * Sign in.
- *
- * The failure is shown inline rather than as a toast: it belongs to the form
- * the user is looking at and has to survive while they correct it. Everything
- * that happens away from a form reports through the notification system
- * instead - including the success here, which is announced from the shell once
- * the session exists.
- */
 export default function LoginPage() {
   const { signIn } = useAuth()
   const notify = useNotification()

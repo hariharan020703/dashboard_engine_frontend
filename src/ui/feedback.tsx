@@ -1,18 +1,5 @@
 import { AlertCircle } from 'lucide-react'
 
-/**
- * Inline status banners for a form the user is looking at.
- *
- * These are for problems that belong to the field in front of somebody and have
- * to stay visible while they fix it - a rejected password, a mismatched
- * confirmation, a caution about the state of the record on screen.
- *
- * The OUTCOME of an action is not shown here. That goes through
- * ui/notificationContext, so every create, save, grant and revoke in the
- * application reports itself the same way, and a success banner cannot be
- * forgotten on one screen and present on another.
- */
-
 export function FormError({ message }: { message: string }) {
   return (
     <p

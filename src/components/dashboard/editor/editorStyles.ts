@@ -1,4 +1,3 @@
-/** Shared control styling and non-component constants for the card editor. */
 
 export const inputCls =
   'h-8 w-full rounded-md border border-slate-300 bg-white px-2 text-[13px] text-slate-800 ' +

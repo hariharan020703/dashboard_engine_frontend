@@ -7,7 +7,6 @@ interface Props {
   spec: RenderChart
 }
 
-/** A funnel row as the backend formats it: number for geometry, text for display. */
 interface Segment {
   name: string
   value: number
@@ -18,7 +17,6 @@ interface Segment {
 
 const PALETTE = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
 
-/** Segments drawn in the funnel itself. More than this and the shape stops being readable. */
 const DEFAULT_SEGMENTS = 5
 const MAX_SEGMENTS = 10
 
@@ -75,7 +73,6 @@ export default function FunnelChartCard({ spec }: Props) {
         )}
       </div>
 
-      {/* Complete label overview — every value stays readable however many there are. */}
       <div className="flex w-[196px] shrink-0 flex-col rounded-lg border border-slate-200 bg-slate-50/60">
         <div className="flex shrink-0 items-baseline justify-between gap-2 border-b border-slate-200 px-2.5 py-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">

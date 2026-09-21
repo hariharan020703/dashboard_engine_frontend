@@ -39,18 +39,6 @@ import {
 import type { AccessLevel, RoleName } from '@/types/auth'
 import type { AdminUser, DashboardSummary, ScopeDimension, UserGrant } from '@/types/admin'
 
-/**
- * One account, and the three things that decide what it can reach:
- *
- *   role          what this user may do to the platform (permissions)
- *   grants        which dashboards they may open, and at what level
- *   data scopes   which slices of the data they may see
- *
- * The three are independent on the backend and stay independent here. Each
- * section loads only when the signed-in user holds the permission that
- * section's endpoints require, so somebody with `user.read` alone sees the
- * account without the panels they could not use.
- */
 export default function UserDetailPage() {
   const { id } = useParams()
   const userId = Number(id)
@@ -88,6 +76,8 @@ export default function UserDetailPage() {
     }
   }, [userId, idIsValid, reloadToken])
 
+  const basePath = me?.companyId === null ? '/platform/users' : '/team/users'
+
   if (loading) return <Loading />
 
   if (!idIsValid) {
@@ -96,7 +86,7 @@ export default function UserDetailPage() {
         <PageHeader title="User" />
         <Panel>
           <FormError message="That is not a valid user id." />
-          <Link to="/admin/users" className="mt-4 inline-block text-[13px] font-medium text-blue-600">
+          <Link to={basePath} className="mt-4 inline-block text-[13px] font-medium text-blue-600">
             Back to users
           </Link>
         </Panel>
@@ -110,7 +100,7 @@ export default function UserDetailPage() {
         <PageHeader title="User" />
         <Panel>
           <FormError message={error || 'User not found.'} />
-          <Link to="/admin/users" className="mt-4 inline-block text-[13px] font-medium text-blue-600">
+          <Link to={basePath} className="mt-4 inline-block text-[13px] font-medium text-blue-600">
             Back to users
           </Link>
         </Panel>
@@ -123,7 +113,7 @@ export default function UserDetailPage() {
   return (
     <div className="p-6">
       <Link
-        to="/admin/users"
+        to={basePath}
         className="mb-3 inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-500 hover:text-slate-700"
       >
         <ArrowLeft size={14} />
@@ -137,7 +127,9 @@ export default function UserDetailPage() {
             <RoleBadge role={target.role} />
             <StatusBadge status={target.status} />
             <span>{target.email}</span>
-            {target.companyName && <span>· {target.companyName}</span>}
+            {target.companyName && (
+              <span>· {target.companyName}</span>
+            )}
           </span>
         }
       />
@@ -151,9 +143,6 @@ export default function UserDetailPage() {
   )
 }
 
-/* --------------------------------------------------------------- account --- */
-
-/** Role, activation state, and reissuing access. */
 function AccountPanel({
   target,
   isSelf,

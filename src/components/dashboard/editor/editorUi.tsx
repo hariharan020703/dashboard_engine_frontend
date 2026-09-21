@@ -2,7 +2,6 @@ import { AlertCircle, X } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { labelCls, panelCls } from './editorStyles'
 
-/** A labelled control. */
 export function Field({
   label,
   children,
@@ -20,7 +19,6 @@ export function Field({
   )
 }
 
-/** A property group: a compact titled panel, always visible. */
 export function Group({
   title,
   action,

@@ -1,15 +1,8 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
 
-/**
- * A centred dialog over a dimmed page.
- *
- * Extracted from the user menu, which hand-rolled one, so the admin screens
- * that need a form in front of a list do not each grow their own. Escape and a
- * backdrop click both close it — a dialog that can only be dismissed by a
- * button is a trap when the button is below the fold.
- */
 export default function Modal({
   title,
   onClose,
@@ -29,9 +22,9 @@ export default function Modal({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [onClose])
 
-  return (
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-6"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 sm:p-6"
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose()
       }}
@@ -40,9 +33,9 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`w-full ${width} max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl`}
+        className={`w-full ${width} max-h-[85vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl`}
       >
-        <header className="sticky top-0 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3">
+        <header className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3.5">
           <h2 className="text-sm font-semibold text-slate-800">{title}</h2>
           <button
             type="button"
@@ -55,6 +48,8 @@ export default function Modal({
         </header>
         <div className="space-y-4 p-5">{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }
+

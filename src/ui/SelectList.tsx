@@ -1,9 +1,5 @@
 import type { ReactNode } from 'react'
 
-/**
- * The left-hand column of a master/detail screen: rows, one highlighted.
- * Knows nothing about groups or roles, so both admin screens share it.
- */
 export default function SelectList<T>({
   items,
   selectedKey,
@@ -18,9 +14,7 @@ export default function SelectList<T>({
   onSelect: (item: T) => void
   keyOf: (item: T) => string | number
   primary: (item: T) => ReactNode
-  /** The quieter second line, when there is one to show. */
   secondary?: (item: T) => ReactNode
-  /** Pinned to the right — a status badge, or nothing. */
   trailing?: (item: T) => ReactNode
 }) {
   return (

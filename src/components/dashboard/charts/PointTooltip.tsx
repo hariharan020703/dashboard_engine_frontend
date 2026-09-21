@@ -3,11 +3,6 @@ interface PointPayload {
   payload?: { valueText?: string; shareText?: string }
 }
 
-/**
- * Tooltip for charts whose points stand alone — a treemap tile, a funnel
- * segment — as opposed to SeriesTooltip, which lists every series at one x.
- * Values come preformatted from the backend.
- */
 export default function PointTooltip({
   active,
   payload,

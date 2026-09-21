@@ -1,4 +1,9 @@
 import { useEffect, useState } from 'react'
+import {
+  BarChart3,
+  Filter,
+  Table,
+} from 'lucide-react'
 import { fetchColumns } from '@/api/dashboardApi'
 import { useAppData } from '@/layouts/appOutlet'
 import { dedupeDashboards } from '@/services/dashboards'
@@ -7,29 +12,21 @@ import { Badge, EmptyState, Loading, PageHeader, Panel } from '@/ui/page'
 import { labelCls, selectCls, tableCls, tdCls, thCls } from '@/ui/styles'
 import type { ColumnCatalogue } from '@/types/dashboard'
 import { errorMessage } from '@/api/client'
+import { useAuth } from '@/context/authContext'
+import StatCard from '@/ui/StatCard'
 
-/**
- * What the dashboards are built on: the source table a dashboard's spec names,
- * and every column in it with the role the engine gives it.
- *
- * This is the same catalogue the card editor picks fields from — the existing
- * `/api/dashboard/columns` endpoint — shown on its own so the shape of the data
- * can be read without opening a card. The database remains the source of truth; the
- * dashboard JSON only says which table to look at.
- */
 export default function DataPage() {
   const { dashboards } = useAppData()
+  const { user } = useAuth()
   const notify = useNotification()
+  const isPlatform = user?.companyId === null
   const listed = dedupeDashboards(dashboards)
 
   const [picked, setPicked] = useState('')
   const [catalogue, setCatalogue] = useState<ColumnCatalogue | null>(null)
   const [loading, setLoading] = useState(false)
+  const [activeTab, setActiveTab] = useState<'all' | 'measures' | 'dimensions'>('all')
 
-  // Derived rather than stored: until someone picks one, the catalogue is read
-  // from the first dashboard they may open. Storing that default would need an
-  // effect to write it, and an effect that only mirrors a prop is a bug waiting
-  // for the prop to change.
   const dashboardId = picked || listed[0]?.id || ''
 
   useEffect(() => {
@@ -44,7 +41,7 @@ export default function DataPage() {
       } catch (err) {
         if (!active) return
         setCatalogue(null)
-        notify.error('Could not read the column catalogue.', errorMessage(err, ''))
+        notify.error('Could not read the data catalog.', errorMessage(err, ''))
       } finally {
         if (active) setLoading(false)
       }
@@ -56,19 +53,33 @@ export default function DataPage() {
     }
   }, [dashboardId, notify])
 
+  const measures = catalogue?.columns.filter((c) => c.role === 'measure') ?? []
+  const dimensions = catalogue?.columns.filter((c) => c.role !== 'measure') ?? []
+
+  const displayedColumns =
+    activeTab === 'measures'
+      ? measures
+      : activeTab === 'dimensions'
+      ? dimensions
+      : catalogue?.columns ?? []
+
   return (
     <div className="p-6">
       <PageHeader
-        title="Data"
-        description="The table behind a dashboard, as the query engine resolves it."
+        title={isPlatform ? 'Data Sources & Schema Catalog' : 'Business Data Catalog'}
+        description={
+          isPlatform
+            ? 'Technical schema specifications, reporting tables, and column roles mapped to the query engine.'
+            : 'Explore business metrics, measures, and dimension attributes available in your dashboards.'
+        }
         actions={
           listed.length > 1 ? (
-            <div className="w-56">
-              <label className={labelCls} htmlFor="data-dashboard">
-                Dashboard
+            <div className="w-60">
+              <label className={labelCls} htmlFor="data-dashboard-selector">
+                Active Dataset
               </label>
               <select
-                id="data-dashboard"
+                id="data-dashboard-selector"
                 className={selectCls}
                 value={dashboardId}
                 onChange={(e) => setPicked(e.target.value)}
@@ -87,69 +98,151 @@ export default function DataPage() {
       {!listed.length && (
         <Panel flush>
           <EmptyState
-            message="You have not been granted a dashboard yet."
-            hint="The column catalogue is read from a dashboard's source table."
+            message="No dashboards assigned to your account."
+            hint="The data catalog presents columns and metrics mapped to your assigned dashboards."
           />
         </Panel>
       )}
 
       {loading && (
         <Panel flush>
-          <Loading label="Reading the table metadata…" />
+          <Loading label="Inspecting data catalog…" />
         </Panel>
       )}
 
       {!loading && catalogue && (
         <div className="space-y-6">
-          <Panel title="Source">
-            <dl className="grid gap-4 sm:grid-cols-4">
-              <div>
-                <dt className={labelCls}>Database</dt>
-                <dd className="text-sm text-slate-800">{catalogue.database}</dd>
-              </div>
-              <div>
-                <dt className={labelCls}>Table</dt>
-                <dd className="text-sm text-slate-800">
-                  {catalogue.schema}.{catalogue.table}
-                </dd>
-              </div>
-              <div>
-                <dt className={labelCls}>Rows</dt>
-                <dd className="text-sm text-slate-800">{catalogue.rowCountText}</dd>
-              </div>
-              <div>
-                <dt className={labelCls}>Columns</dt>
-                <dd className="text-sm text-slate-800">{catalogue.columns.length}</dd>
-              </div>
-            </dl>
-          </Panel>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <StatCard
+              title="Analytical Measures"
+              value={measures.length}
+              subtitle="Numeric metrics aggregated by query engine"
+              icon={BarChart3}
+              tone="blue"
+            />
+            <StatCard
+              title="Dimensions & Slicers"
+              value={dimensions.length}
+              subtitle="Attributes available for grouping and filtering"
+              icon={Filter}
+              tone="purple"
+            />
+            <StatCard
+              title="Total Data Records"
+              value={catalogue.rowCountText || 'Live'}
+              subtitle="Validated records in current data source"
+              icon={Table}
+              tone="emerald"
+            />
+          </div>
+
+          {isPlatform && (
+            <Panel title="Technical Database & Schema Properties">
+              <dl className="grid gap-4 sm:grid-cols-4 text-xs">
+                <div>
+                  <dt className="text-slate-400 font-semibold uppercase">Database Name</dt>
+                  <dd className="mt-1 font-mono font-semibold text-slate-800">
+                    {catalogue.database}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400 font-semibold uppercase">Schema & Table</dt>
+                  <dd className="mt-1 font-mono text-slate-800">
+                    {catalogue.schema}.{catalogue.table}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400 font-semibold uppercase">Target Driver</dt>
+                  <dd className="mt-1 font-mono text-slate-800">PostgreSQL (pg pool)</dd>
+                </div>
+                <div>
+                  <dt className="text-slate-400 font-semibold uppercase">Total Columns</dt>
+                  <dd className="mt-1 text-slate-800">{catalogue.columns.length}</dd>
+                </div>
+              </dl>
+            </Panel>
+          )}
 
           <Panel
-            title="Columns"
-            description="Numeric columns are aggregated as measures; everything else groups."
+            title="Available Fields & Attributes"
+            description="Fields available for visualization, slicer filtering, and dimensional grouping."
+            actions={
+              <div className="flex items-center gap-1 rounded-lg border border-slate-200 bg-slate-50 p-0.5 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('all')}
+                  className={`rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    activeTab === 'all'
+                      ? 'bg-white text-blue-600 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({catalogue.columns.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('measures')}
+                  className={`rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    activeTab === 'measures'
+                      ? 'bg-white text-blue-600 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Measures ({measures.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dimensions')}
+                  className={`rounded-md px-2.5 py-1 font-semibold transition-colors ${
+                    activeTab === 'dimensions'
+                      ? 'bg-white text-blue-600 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Dimensions ({dimensions.length})
+                </button>
+              </div>
+            }
             flush
           >
             <div className="overflow-x-auto">
               <table className={tableCls}>
                 <thead>
-                  <tr>
-                    <th className={thCls}>Column</th>
-                    <th className={thCls}>Type</th>
+                  <tr className="bg-slate-50/70">
+                    <th className={thCls}>Field Name</th>
                     <th className={thCls}>Role</th>
-                    <th className={thCls}>Nullable</th>
+                    <th className={thCls}>Data Type</th>
+                    {isPlatform && <th className={thCls}>Nullable</th>}
+                    <th className={thCls}>Purpose</th>
                   </tr>
                 </thead>
-                <tbody>
-                  {catalogue.columns.map((c) => (
-                    <tr key={c.name}>
-                      <td className={`${tdCls} font-medium text-slate-800`}>{c.name}</td>
-                      <td className={`${tdCls} text-slate-500`}>{c.columnType}</td>
-                      <td className={tdCls}>
-                        <Badge tone={c.role === 'measure' ? 'info' : 'neutral'}>{c.role}</Badge>
-                      </td>
-                      <td className={`${tdCls} text-slate-500`}>{c.nullable ? 'yes' : 'no'}</td>
-                    </tr>
-                  ))}
+                <tbody className="divide-y divide-slate-100">
+                  {displayedColumns.map((c) => {
+                    const isMeasure = c.role === 'measure'
+                    return (
+                      <tr key={c.name} className="hover:bg-slate-50/50">
+                        <td className={`${tdCls} font-semibold text-slate-800`}>{c.name}</td>
+                        <td className={tdCls}>
+                          <Badge tone={isMeasure ? 'info' : 'neutral'}>
+                            {isMeasure ? 'Measure' : 'Dimension'}
+                          </Badge>
+                        </td>
+                        <td className={`${tdCls} font-mono text-xs text-slate-500`}>
+                          {c.columnType}
+                        </td>
+                        {isPlatform && (
+                          <td className={`${tdCls} text-xs text-slate-500`}>
+                            {c.nullable ? 'Yes' : 'No'}
+                          </td>
+                        )}
+                        <td className={`${tdCls} text-xs text-slate-600`}>
+                          {isMeasure
+                            ? 'Calculated numeric value suitable for charts and KPI cards.'
+                            : 'Categorical attribute used for slicer filters and chart axes.'}
+                        </td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

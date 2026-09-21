@@ -28,18 +28,6 @@ import { actionDangerCls, actionPrimaryCls, labelCls, primaryButtonCls, selectCl
 import type { AccessLevel } from '@/types/auth'
 import type { Company, Group, GroupDashboards, UserOption } from '@/types/admin'
 
-/**
- * Groups: a named set of users inside one company that dashboard access
- * attaches to, so it is managed per team rather than per person.
- *
- * Membership and access both live on the selected group rather than behind a
- * second route - they are two halves of the same question, and splitting them
- * across pages would only add a URL.
- *
- * A group belongs to exactly one company, and only that company's accounts can
- * be members. The backend rejects anything else; the member picker simply never
- * offers it, because it is fed by the same company-scoped endpoint.
- */
 export default function GroupsPage() {
   const { can, user: me } = useAuth()
   const notify = useNotification()
@@ -131,7 +119,7 @@ export default function GroupsPage() {
               primary={(g) => g.name}
               secondary={(g) =>
                 isPlatform
-                  ? `${g.companyName} · ${g.memberCount} member${g.memberCount === 1 ? '' : 's'}`
+                  ? `${g.companyName || 'Platform'} · ${g.memberCount} member${g.memberCount === 1 ? '' : 's'}`
                   : `${g.memberCount} member${g.memberCount === 1 ? '' : 's'}`
               }
               trailing={(g) => (!g.active ? <Badge tone="danger">inactive</Badge> : null)}

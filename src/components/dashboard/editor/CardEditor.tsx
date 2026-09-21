@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
+import { createPortal } from 'react-dom'
 import {
   ArrowUpDown,
   BarChart3,
@@ -35,7 +36,6 @@ import { deriveGroupBy } from '@/services/cardModel'
 import { cardKindOf, cardTypeLabel } from '@/components/dashboard/cardRegistry'
 
 interface Props {
-  /** The dashboard the card belongs to: its spec decides the source table. */
   dashboardId: string
   card: CardDefinition
   filters?: Record<string, string[]>
@@ -45,11 +45,6 @@ interface Props {
 
 type TabId = 'fields' | 'sort' | 'period' | 'type' | 'color' | 'properties' | 'source'
 
-/**
- * Every card is edited with the same options. A KPI is a card whose type is a
- * badge, so nothing here is withheld based on what the card happens to be —
- * switching the type on the Type tab re-renders the preview as the other thing.
- */
 const TABS: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
   { id: 'fields', label: 'Fields', icon: Table2 },
   { id: 'type', label: 'Type', icon: BarChart3 },
@@ -62,11 +57,6 @@ const TABS: Array<{ id: TabId; label: string; icon: LucideIcon }> = [
 
 const PREVIEW_DEBOUNCE_MS = 500
 
-/**
- * Normalises the draft before it leaves the editor: groupBy is rederived from
- * the field roles and empty fields are dropped, so the saved JSON is always
- * internally consistent.
- */
 function normalise(draft: CardDefinition): CardDefinition {
   const next = structuredClone(draft)
   const cols = (next.columns ?? []).filter((c) => (c.column ?? '').trim())
@@ -179,10 +169,6 @@ export default function CardEditor({ dashboardId, card, filters = {}, onSave, on
       return next
     })
 
-  /**
-   * Clicking a column in the catalogue adds it with a role matching its type.
-   * On a badge a dimension is still the value — counted rather than grouped by.
-   */
   const pickColumn = (col: SourceColumn) => {
     let entry: ColumnDef
     if (col.role === 'measure') entry = { column: col.name, mapping: 'VALUE', aggregation: 'SUM' }
@@ -226,7 +212,7 @@ export default function CardEditor({ dashboardId, card, filters = {}, onSave, on
   const dirty = JSON.stringify(normalise(draft)) !== JSON.stringify(normalise(card))
   const blocked = Boolean(preview?.error)
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
       <div className="flex h-[calc(100vh-2rem)] max-h-[860px] w-full max-w-[1320px] flex-col overflow-hidden rounded-xl bg-white shadow-2xl ring-1 ring-slate-900/5">
         <header className="flex shrink-0 items-center gap-4 border-b border-slate-200 px-4 py-3">
@@ -268,7 +254,6 @@ export default function CardEditor({ dashboardId, card, filters = {}, onSave, on
             onPick={pickColumn}
           />
 
-          {/* Vertical section nav keeps each panel short enough to avoid scrolling. */}
           <nav className="flex w-[132px] shrink-0 flex-col gap-0.5 border-r border-slate-200 bg-slate-50 p-2">
             {TABS.map((t) => {
               const active = tab === t.id
@@ -310,6 +295,7 @@ export default function CardEditor({ dashboardId, card, filters = {}, onSave, on
           />
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   )
 }

@@ -6,15 +6,6 @@ import type { AccessLevel } from '@/types/auth'
 import type { AccessLevelDef, DashboardSummary } from '@/types/admin'
 import { actionPrimaryCls, labelCls, selectCls } from '@/ui/styles'
 
-/**
- * Grant a dashboard at a level - the same three controls for a user or a group,
- * because the backend's grant endpoints take the same pair either way.
- *
- * The dashboard list is a prop and comes from the "grantable" endpoint, which
- * for a company administrator is their own company's assignments rather than
- * the whole registry. So the picker cannot offer something the backend would
- * refuse, and the two never have to disagree in front of the user.
- */
 export default function GrantPicker({
   dashboards,
   disabled,

@@ -18,22 +18,8 @@ import type {
   UserGrant,
   UserOption,
   UserScope,
+  AuditLogEntry,
 } from '@/types/admin'
-
-/**
- * The administration API: the backend's RBAC routes, one thin function each.
- *
- * Deliberately one module rather than five. These are all calls the same
- * screens make in the same breath - granting a user access needs the directory,
- * the company's dashboards and the access levels - and splitting them by URL
- * prefix would buy nothing but imports.
- *
- * Nothing here adds capability; it only reaches what the backend already has.
- * Note what is absent: no companyId is ever sent from a screen a company
- * administrator uses, because the server derives it from who is asking.
- */
-
-/* ------------------------------------------------------------ companies --- */
 
 export function listCompanies(): Promise<Company[]> {
   return apiFetch<Company[]>('/api/companies')
@@ -282,4 +268,20 @@ export function revokeGroupAccess(dashboardId: string, groupId: number): Promise
 
 export function fetchGroupDashboards(groupId: number): Promise<GroupDashboards> {
   return apiFetch<GroupDashboards>(`/api/access/groups/${groupId}/dashboards`)
+}
+
+/* --------------------------------------------------------------- system --- */
+
+export function fetchAuditLogs(limit = 100): Promise<AuditLogEntry[]> {
+  return apiFetch<AuditLogEntry[]>(`/api/audit?limit=${limit}`)
+}
+
+export interface HealthStatus {
+  status: 'ok' | 'starting'
+  detail: string | null
+  email: string
+}
+
+export function fetchHealth(): Promise<HealthStatus> {
+  return apiFetch<HealthStatus>('/api/health')
 }
