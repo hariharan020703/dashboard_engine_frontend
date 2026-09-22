@@ -21,7 +21,8 @@ import AuditLogPage from '@/pages/platform/AuditLogPage'
 import PlatformSettingsPage from '@/pages/platform/PlatformSettingsPage'
 import ContextLayerPage from '@/modules/context-layer/ContextLayerPage'
 import ConnectionDatasetsPage from '@/modules/context-layer/ConnectionDatasetsPage'
-import DataAnalystAgentPage from '@/modules/data-analyst-agent/DataAnalystAgentPage'
+import { CommandCenterPage } from '@/modules/data-analyst-agent/pages/CommandCenterPage'
+import { PlaybooksPage } from '@/modules/data-analyst-agent/pages/PlaybooksPage'
 import WorkspaceOverviewPage from '@/pages/workspace/WorkspaceOverviewPage'
 import AccessMatrixPage from '@/pages/workspace/AccessMatrixPage'
 import CompanySettingsPage from '@/pages/workspace/CompanySettingsPage'
@@ -207,7 +208,9 @@ export default function App() {
                   </RequirePermission>
                 }
               />
-              <Route path="agent" element={<DataAnalystAgentPage />} />
+              <Route path="agent/:id?" element={<CommandCenterPage mode="analyst" />} />
+              <Route path="playbook-builder/:id?" element={<CommandCenterPage mode="builder" />} />
+              <Route path="playbooks" element={<PlaybooksPage />} />
               <Route path="dashboards" element={<HomePage />} />
               <Route
                 path="data"
@@ -254,7 +257,9 @@ export default function App() {
                   </RequirePermission>
                 }
               />
-              <Route path="/agent" element={<DataAnalystAgentPage />} />
+              <Route path="/agent/:id?" element={<CommandCenterPage mode="analyst" />} />
+              <Route path="/playbook-builder/:id?" element={<CommandCenterPage mode="builder" />} />
+              <Route path="/playbooks" element={<PlaybooksPage />} />
 
               <Route
                 path="/team/users"

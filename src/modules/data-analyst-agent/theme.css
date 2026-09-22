@@ -1,0 +1,104 @@
+/*
+ * Design tokens for the ported playbooks/analyst-chat pages, lifted from
+ * mojo-data-agent-app's index.css. Scoped under .agent-workbench instead of
+ * :root so this feature's look stays self-contained and never touches the
+ * rest of dashboard_engine_frontend's styling. The @theme block is additive
+ * (dashboard defines none of these keys today) — it just teaches Tailwind
+ * the extra utility classes (bg-primary, text-card-foreground, rounded-4xl,
+ * ...) that the copied components use; the actual color VALUES only take
+ * effect inside .agent-workbench.
+ */
+
+@theme {
+  --color-premium-foreground: var(--aw-premium-foreground);
+  --color-premium: var(--aw-premium);
+  --color-standard-foreground: var(--aw-standard-foreground);
+  --color-standard: var(--aw-standard);
+  --color-sidebar-ring: var(--aw-sidebar-ring);
+  --color-sidebar-border: var(--aw-sidebar-border);
+  --color-sidebar-accent-foreground: var(--aw-sidebar-accent-foreground);
+  --color-sidebar-accent: var(--aw-sidebar-accent);
+  --color-sidebar-primary-foreground: var(--aw-sidebar-primary-foreground);
+  --color-sidebar-primary: var(--aw-sidebar-primary);
+  --color-sidebar-foreground: var(--aw-sidebar-foreground);
+  --color-sidebar: var(--aw-sidebar);
+  --color-chart-5: var(--aw-chart-5);
+  --color-chart-4: var(--aw-chart-4);
+  --color-chart-3: var(--aw-chart-3);
+  --color-chart-2: var(--aw-chart-2);
+  --color-chart-1: var(--aw-chart-1);
+  --color-ring: var(--aw-ring);
+  --color-input: var(--aw-input);
+  --color-border: var(--aw-border);
+  --color-destructive: var(--aw-destructive);
+  --color-accent-foreground: var(--aw-accent-foreground);
+  --color-accent: var(--aw-accent);
+  --color-muted-foreground: var(--aw-muted-foreground);
+  --color-muted: var(--aw-muted);
+  --color-secondary-foreground: var(--aw-secondary-foreground);
+  --color-secondary: var(--aw-secondary);
+  --color-primary-foreground: var(--aw-primary-foreground);
+  --color-primary: var(--aw-primary);
+  --color-popover-foreground: var(--aw-popover-foreground);
+  --color-popover: var(--aw-popover);
+  --color-card-foreground: var(--aw-card-foreground);
+  --color-card: var(--aw-card);
+  --color-foreground: var(--aw-foreground);
+  --color-background: var(--aw-background);
+  --color-link: var(--aw-link);
+  --radius-sm: calc(var(--aw-radius) * 0.6);
+  --radius-md: calc(var(--aw-radius) * 0.8);
+  --radius-lg: var(--aw-radius);
+  --radius-xl: calc(var(--aw-radius) * 1.4);
+  --radius-2xl: calc(var(--aw-radius) * 1.8);
+  --radius-3xl: calc(var(--aw-radius) * 2.2);
+  --radius-4xl: calc(var(--aw-radius) * 2.6);
+}
+
+.agent-workbench {
+  --aw-background: oklch(1 0 0);
+  --aw-foreground: var(--aw-standard);
+  --aw-card: oklch(1 0 0);
+  --aw-card-foreground: var(--aw-standard);
+  --aw-popover: oklch(1 0 0);
+  --aw-popover-foreground: var(--aw-standard);
+  --aw-primary: #0f3460;
+  --aw-primary-foreground: oklch(0.985 0 0);
+  --aw-link: #0f3460;
+  --aw-secondary: #efc07b;
+  --aw-secondary-foreground: #1a1a2e;
+  --aw-standard: #1a1a2e;
+  --aw-standard-foreground: oklch(0.985 0 0);
+  --aw-premium: #16213e;
+  --aw-premium-foreground: oklch(0.985 0 0);
+  --aw-muted: oklch(0.97 0 0);
+  --aw-muted-foreground: oklch(0.556 0 0);
+  --aw-accent: oklch(0.97 0 0);
+  --aw-accent-foreground: oklch(0.205 0 0);
+  --aw-destructive: oklch(0.577 0.245 27.325);
+  --aw-border: oklch(0.922 0 0);
+  --aw-input: oklch(0.922 0 0);
+  --aw-ring: oklch(0.708 0 0);
+  --aw-chart-1: oklch(0.575 0.163 255.5);
+  --aw-chart-2: oklch(0.671 0.175 40.6);
+  --aw-chart-3: oklch(0.669 0.141 162.1);
+  --aw-chart-4: oklch(0.764 0.161 75.1);
+  --aw-chart-5: oklch(0.716 0.141 357.4);
+  --aw-radius: 0.625rem;
+  --aw-sidebar: var(--aw-standard);
+  --aw-sidebar-foreground: oklch(0.985 0 0);
+  --aw-sidebar-primary: var(--aw-primary);
+  --aw-sidebar-primary-foreground: oklch(0.985 0 0);
+  --aw-sidebar-accent: var(--aw-premium);
+  --aw-sidebar-accent-foreground: var(--aw-premium-foreground);
+  --aw-sidebar-border: oklch(1 0 0 / 10%);
+  --aw-sidebar-ring: var(--aw-primary);
+
+  background-color: var(--aw-background);
+  color: var(--aw-foreground);
+}
+
+.agent-workbench,
+.agent-workbench * {
+  border-color: var(--aw-border);
+}

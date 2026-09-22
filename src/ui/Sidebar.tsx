@@ -2,6 +2,7 @@ import type { LucideIcon } from 'lucide-react'
 import {
   Activity,
   Bot,
+  BookOpen,
   Building2,
   ChartColumn,
   Database,
@@ -71,6 +72,7 @@ export default function Sidebar({
       items: [
         { label: 'Context Layer', path: '/platform/context', icon: Layers, permission: 'context.read' },
         { label: 'Data Analyst Agent', path: '/platform/agent', icon: Bot },
+        { label: 'Playbooks', path: '/platform/playbooks', icon: BookOpen },
       ],
     },
     {
@@ -102,6 +104,7 @@ export default function Sidebar({
       items: [
         { label: 'Context Layer', path: '/context', icon: Layers, permission: 'context.read' },
         { label: 'Data Analyst Agent', path: '/agent', icon: Bot },
+        { label: 'Playbooks', path: '/playbooks', icon: BookOpen },
       ],
     },
     {
