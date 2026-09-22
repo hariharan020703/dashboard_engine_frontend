@@ -1,6 +1,5 @@
 import * as React from "react"
 import { useNavigate } from "react-router-dom"
-import { Toaster } from "sonner"
 import {
   AlarmClock,
   BookOpen,
@@ -576,7 +575,7 @@ export function PlaybooksPage() {
           </DropdownMenu>
         )}
       </div>
-      <Toaster />
+      {/* Toasts render from the single Toaster mounted in App. */}
     </div>
   )
 }

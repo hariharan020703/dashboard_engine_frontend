@@ -1,4 +1,4 @@
-import { apiFetch } from '@/api/client'
+import { del, get, post, put } from '@/api/http'
 import type {
   Connection,
   Connector,
@@ -10,15 +10,15 @@ import type {
 /** Everything this module calls. Nothing outside it talks to /api/context. */
 
 export function listConnectors(): Promise<Connector[]> {
-  return apiFetch<Connector[]>('/api/context/connectors')
+  return get<Connector[]>('/context/connectors')
 }
 
 export function listConnections(): Promise<Connection[]> {
-  return apiFetch<Connection[]>('/api/context/connections')
+  return get<Connection[]>('/context/connections')
 }
 
 export function getConnection(id: string): Promise<Connection> {
-  return apiFetch<Connection>(`/api/context/connections/${encodeURIComponent(id)}`)
+  return get<Connection>(`/context/connections/${encodeURIComponent(id)}`)
 }
 
 /**
@@ -38,18 +38,22 @@ export function createConnection(body: {
   token: string
   companyId?: number
 }): Promise<CreatedConnection> {
-  return apiFetch<CreatedConnection>('/api/context/connections', { method: 'POST', body })
+  return post<CreatedConnection>('/context/connections', body)
 }
 
 export function verifyConnection(id: string): Promise<{ connection: Connection }> {
-  return apiFetch(`/api/context/connections/${encodeURIComponent(id)}/verify`, { method: 'POST' })
+  return post<{ connection: Connection }>(
+    `/context/connections/${encodeURIComponent(id)}/verify`
+  )
 }
 
 /** What the warehouse has right now. Not cached, on either side. */
 export function fetchDatasets(
   id: string
 ): Promise<{ datasets: WarehouseDataset[]; fetchedAt: string }> {
-  return apiFetch(`/api/context/connections/${encodeURIComponent(id)}/datasets`)
+  return get<{ datasets: WarehouseDataset[]; fetchedAt: string }>(
+    `/context/connections/${encodeURIComponent(id)}/datasets`
+  )
 }
 
 /**
@@ -62,12 +66,9 @@ export function saveSelection(
   id: string,
   datasets: Array<Pick<SelectedDataset, 'id'> & Partial<WarehouseDataset>>
 ): Promise<Connection> {
-  return apiFetch<Connection>(`/api/context/connections/${encodeURIComponent(id)}/datasets`, {
-    method: 'PUT',
-    body: { datasets },
-  })
+  return put<Connection>(`/context/connections/${encodeURIComponent(id)}/datasets`, { datasets })
 }
 
 export function deleteConnection(id: string): Promise<{ deleted: true }> {
-  return apiFetch(`/api/context/connections/${encodeURIComponent(id)}`, { method: 'DELETE' })
+  return del<{ deleted: true }>(`/context/connections/${encodeURIComponent(id)}`)
 }

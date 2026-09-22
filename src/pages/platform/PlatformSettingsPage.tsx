@@ -1,190 +1,203 @@
-import { useEffect, useState } from 'react'
-import { CheckCircle2, RefreshCw } from 'lucide-react'
-import { fetchHealth, type HealthStatus } from '@/api/adminApi'
-import { PageHeader, Panel } from '@/ui/page'
-import { actionButtonCls } from '@/ui/styles'
+import { CheckCircle2, RefreshCw, ShieldCheck } from 'lucide-react'
+import { fetchPlatformSettings } from '@/api/platformApi'
+import { fetchHealth } from '@/api/workspaceApi'
+import { useAsync } from '@/hooks/useAsync'
+import { Page, PageHeader, Section } from '@/components/common/Page'
+import { CardGridSkeleton, ErrorState } from '@/components/common/States'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
 
+/** Seconds as the unit a person would say out loud. */
+function duration(seconds: number): string {
+  if (seconds % 86400 === 0) {
+    const days = seconds / 86400
+    return `${days} ${days === 1 ? 'day' : 'days'}`
+  }
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600
+    return `${hours} ${hours === 1 ? 'hour' : 'hours'}`
+  }
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60
+    return `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`
+  }
+  return `${seconds} seconds`
+}
+
+function Row({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-border py-3 last:border-0">
+      <div className="min-w-0">
+        <p className="text-sm text-foreground">{label}</p>
+        {hint && <p className="mt-0.5 text-xs text-muted-foreground">{hint}</p>}
+      </div>
+      <p className="shrink-0 text-sm font-medium tabular-nums text-foreground">{value}</p>
+    </div>
+  )
+}
+
+/**
+ * How this deployment is configured.
+ *
+ * Every value is read from the running process through /api/platform/settings.
+ * The previous version of this screen printed the same numbers as literals in
+ * the markup, which made it a description of what the configuration was on the
+ * day the page was written - and a settings page that can be wrong is worse
+ * than no settings page.
+ *
+ * It is read-only, and that is honest: these are product decisions that live in
+ * source (token lifetimes, throttling) or in the environment (the mail relay).
+ * There is no backend endpoint that changes them, so there is no form here
+ * pretending otherwise.
+ */
 export default function PlatformSettingsPage() {
-  const [health, setHealth] = useState<HealthStatus | null>(null)
-  const [loading, setLoading] = useState(true)
+  const settings = useAsync(() => fetchPlatformSettings(), [])
+  const health = useAsync(() => fetchHealth(), [])
 
-  const [reloadToken, setReloadToken] = useState(0)
-  const reload = () => {
-    setLoading(true)
-    setReloadToken((n) => n + 1)
+  const reloadAll = () => {
+    settings.reload()
+    health.reload()
   }
 
-  useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      try {
-        const data = await fetchHealth()
-        if (cancelled) return
-        setHealth(data)
-      } catch {
-        if (cancelled) return
-        setHealth(null)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    void run()
-    return () => {
-      cancelled = true
-    }
-  }, [reloadToken])
-
   return (
-    <div className="p-6">
+    <Page>
       <PageHeader
-        title="Platform Settings & Configuration"
-        description="Active runtime environment parameters, security controls, and infrastructure health."
+        title="Settings"
+        description="How this deployment is configured, read from the running service."
         actions={
-          <button
-            type="button"
-            onClick={reload}
-            disabled={loading}
-            className={actionButtonCls}
+          <Button
+            variant="outline"
+            onClick={reloadAll}
+            disabled={settings.loading || health.loading}
           >
-            <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
-            Check Health
-          </button>
+            <RefreshCw
+              className={settings.loading || health.loading ? 'animate-spin' : undefined}
+              aria-hidden
+            />
+            Refresh
+          </Button>
         }
       />
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Panel title="System Status & Infrastructure">
-          <dl className="grid gap-4 sm:grid-cols-2 text-xs">
-            <div>
-              <dt className="font-semibold uppercase tracking-wider text-slate-400">API Gateway</dt>
-              <dd className="mt-1 flex items-center gap-1.5 font-bold text-slate-800">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                Operational
-              </dd>
+      {settings.error ? (
+        <Section>
+          <ErrorState
+            error={settings.error}
+            title="Unable to read the configuration"
+            onRetry={settings.reload}
+          />
+        </Section>
+      ) : settings.loading || !settings.data ? (
+        <CardGridSkeleton count={4} />
+      ) : (
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Section title="Service">
+            <div className="-mt-3">
+              <Row
+                label="Status"
+                value={
+                  health.error
+                    ? 'Unreachable'
+                    : health.loading
+                      ? 'Checking…'
+                      : health.data?.status === 'ok'
+                        ? 'Serving'
+                        : 'Starting'
+                }
+                hint={health.data?.detail ?? undefined}
+              />
+              <Row
+                label="Mail transport"
+                value={settings.data.email.provider.toUpperCase()}
+                hint={`Sending as ${settings.data.email.from}`}
+              />
+              <Row
+                label="Dashboards in the registry"
+                value={String(settings.data.engine.dashboardCount)}
+              />
+              <Row
+                label="Queries per dashboard request"
+                value={String(settings.data.engine.queryConcurrency)}
+                hint="How many of a dashboard's cards are queried at once."
+              />
             </div>
-            <div>
-              <dt className="font-semibold uppercase tracking-wider text-slate-400">RBAC Database</dt>
-              <dd className="mt-1 flex items-center gap-1.5 font-bold text-slate-800">
-                {health?.status === 'ok' ? (
-                  <>
-                    <CheckCircle2 size={14} className="text-emerald-600" />
-                    Schema Synchronized
-                  </>
-                ) : (
-                  <span className="text-amber-600">Initializing…</span>
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold uppercase tracking-wider text-slate-400">Email Delivery Relay</dt>
-              <dd className="mt-1 font-mono text-slate-700">
-                {health?.email ? `Provider: ${health.email}` : 'Configured via SMTP'}
-              </dd>
-            </div>
-            <div>
-              <dt className="font-semibold uppercase tracking-wider text-slate-400">Primary Database</dt>
-              <dd className="mt-1 font-mono text-slate-700">PostgreSQL 14+ (pg pool)</dd>
-            </div>
-          </dl>
-        </Panel>
+          </Section>
 
-        {/* Authentication & Token Policy */}
-        <Panel title="Authentication Architecture & Token Lifecycle">
-          <div className="space-y-3 text-xs">
-            <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-              <div>
-                <span className="font-semibold text-slate-800">Access Token</span>
-                <p className="text-[11px] text-slate-500">
-                  Short-lived, held in memory (never localStorage).
-                </p>
-              </div>
-              <span className="rounded bg-blue-50 px-2 py-0.5 font-mono font-bold text-blue-700">
-                15 Minutes
-              </span>
+          <Section title="Sessions">
+            <div className="-mt-3">
+              <Row
+                label="Access token"
+                value={duration(settings.data.tokens.accessTokenTtlSeconds)}
+                hint="Short-lived and held in memory. Nothing can revoke one before it expires, which is why it is measured in minutes."
+              />
+              <Row
+                label="Stay signed in for"
+                value={duration(settings.data.tokens.refreshTokenTtlSeconds)}
+                hint="An HttpOnly cookie, rotated on every use and revocable."
+              />
+              <Row
+                label="Activation link"
+                value={duration(settings.data.tokens.activationTokenTtlSeconds)}
+                hint="Single-use regardless of how long it has left."
+              />
+              <Row
+                label="Cookie"
+                value={`${settings.data.session.cookieSecure ? 'Secure' : 'Not secure'} · SameSite=${settings.data.session.cookieSameSite}`}
+                hint={
+                  settings.data.session.cookieSecure
+                    ? undefined
+                    : 'Only appropriate for local development over plain http.'
+                }
+              />
             </div>
+          </Section>
 
-            <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-              <div>
-                <span className="font-semibold text-slate-800">Refresh Token</span>
-                <p className="text-[11px] text-slate-500">
-                  Rotating HttpOnly cookie (`Path=/api/auth`, `SameSite=Strict`).
-                </p>
-              </div>
-              <span className="rounded bg-indigo-50 px-2 py-0.5 font-mono font-bold text-indigo-700">
-                30 Days
-              </span>
+          <Section title="Passwords and sign-in">
+            <div className="-mt-3">
+              <Row
+                label="Minimum password length"
+                value={`${settings.data.password.minLength} characters`}
+              />
+              <Row label="Hashing cost" value={`bcrypt, ${settings.data.password.bcryptRounds} rounds`} />
+              <Row
+                label="Failed attempts allowed"
+                value={`${settings.data.login.maxAttempts} in ${duration(settings.data.login.windowSeconds)}`}
+              />
+              <Row
+                label="Lockout"
+                value={duration(settings.data.login.lockoutSeconds)}
+                hint="Counted per account and self-clearing, so nobody can lock a colleague out for long."
+              />
             </div>
+          </Section>
 
-            <div className="flex items-center justify-between rounded-lg border border-slate-100 bg-slate-50/50 p-3">
-              <div>
-                <span className="font-semibold text-slate-800">Activation Link TTL</span>
-                <p className="text-[11px] text-slate-500">
-                  Single-use onboarding link dispatched to user email.
-                </p>
-              </div>
-              <span className="rounded bg-purple-50 px-2 py-0.5 font-mono font-bold text-purple-700">
-                72 Hours
-              </span>
-            </div>
-          </div>
-        </Panel>
-
-        {/* Security & Multi-Tenancy Boundary */}
-        <Panel title="Multi-Tenant Isolation Guarantee">
-          <ul className="space-y-2.5 text-xs text-slate-600">
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
-              <span>
-                <strong>Zero Trust in Frontend Headers:</strong> The tenant context is derived
-                strictly server-side from the verified JWT identity.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
-              <span>
-                <strong>SQL-Enforced Tenant Filtering:</strong> All company queries apply
-                mandatory parameterized filters (`company_id = ?`).
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
-              <span>
-                <strong>Probing Prevention:</strong> Cross-tenant resource lookups respond with
-                HTTP 404 Resource Not Found rather than 403, preventing account enumeration.
-              </span>
-            </li>
-            <li className="flex items-start gap-2">
-              <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-emerald-600" />
-              <span>
-                <strong>No Silent Fallbacks:</strong> Missing tokens, missing tenant context, or
-                invalid roles trigger explicit authentication errors.
-              </span>
-            </li>
-          </ul>
-        </Panel>
-
-        {/* Query Engine & Analytics Specs */}
-        <Panel title="Query Engine & Specification Runtime">
-          <dl className="grid gap-3 sm:grid-cols-2 text-xs">
-            <div>
-              <dt className="text-slate-400 font-semibold uppercase tracking-wider">Engine Mode</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">Metadata-Driven JSON Specs</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400 font-semibold uppercase tracking-wider">Query Concurrency</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">6 Parallel Visual Queries Max</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400 font-semibold uppercase tracking-wider">Cache Layer</dt>
-              <dd className="mt-0.5 font-medium text-slate-800">Redis Cache + In-Memory Fallback</dd>
-            </div>
-            <div>
-              <dt className="text-slate-400 font-semibold uppercase tracking-wider">Default Schema</dt>
-              <dd className="mt-0.5 font-mono text-slate-800">public</dd>
-            </div>
-          </dl>
-        </Panel>
-      </div>
-    </div>
+          <Section title="Tenant isolation">
+            <p className="mb-3 flex items-center gap-2 text-sm">
+              <ShieldCheck className="size-4 text-success" aria-hidden />
+              <span className="text-foreground">Enforced server-side on every request.</span>
+            </p>
+            <ul className="space-y-2.5 text-sm text-muted-foreground">
+              {[
+                'The company is derived from the verified identity, never from the request. A companyId sent by a client is ignored rather than validated.',
+                'Every company-scoped query filters on company_id as a bound parameter.',
+                'A resource in another company answers 404, not 403, so an id cannot be used to discover what exists.',
+                'A missing token, company or role fails explicitly. There is no fallback identity and no default company.',
+              ].map((line) => (
+                <li key={line} className="flex items-start gap-2">
+                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />
+                  <span>{line}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-4 text-xs text-muted-foreground">
+              These are properties of the API, not switches.{' '}
+              <Badge variant="outline" className="ml-0.5">
+                Not configurable
+              </Badge>
+            </p>
+          </Section>
+        </div>
+      )}
+    </Page>
   )
 }

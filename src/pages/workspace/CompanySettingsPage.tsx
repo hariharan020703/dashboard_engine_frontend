@@ -1,144 +1,161 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { fetchCompany, updateCompany } from '@/api/adminApi'
-import { errorMessage } from '@/api/client'
+import { Loader2 } from 'lucide-react'
+import { fetchMyCompany } from '@/api/workspaceApi'
+import { updateCompany } from '@/api/platformApi'
+import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
-import { useNotification } from '@/ui/notificationContext'
-import { TextField } from '@/ui/fields'
-import { Badge, Loading, PageHeader, Panel } from '@/ui/page'
-import { actionPrimaryCls } from '@/ui/styles'
-import type { Company } from '@/types/admin'
+import { Page, PageHeader, Section } from '@/components/common/Page'
+import { ActiveBadge } from '@/components/common/Badges'
+import { CompanyAvatar } from '@/components/common/CompanyAvatar'
+import { TextField } from '@/components/common/Fields'
+import { CardGridSkeleton, ErrorState } from '@/components/common/States'
+import { notify } from '@/components/common/notify'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 
+/**
+ * A customer administrator's view of their own company.
+ *
+ * Read through /api/workspace/company, which takes the company from the session
+ * - there is no id in the request, so there is nothing to point at somebody
+ * else's company.
+ *
+ * Renaming still goes through the platform company endpoint, which is what owns
+ * that write and re-checks the tenant before performing it. A COMPANY_ADMIN
+ * holds `company.read` but not `company.update` by default, so for most of them
+ * the form is read-only and says so rather than failing on submit.
+ */
 export default function CompanySettingsPage() {
-  const { user } = useAuth()
-  const notify = useNotification()
+  const { can } = useAuth()
+  const editable = can('company.update')
 
-  const [company, setCompany] = useState<Company | null>(null)
-  const [name, setName] = useState('')
-  const [loading, setLoading] = useState(true)
+  const company = useAsync(() => fetchMyCompany(), [])
+
+  /* Null means "as loaded", so a reload is reflected without an effect. */
+  const [edited, setEdited] = useState<string | null>(null)
+  const name = edited ?? company.data?.name ?? ''
   const [saving, setSaving] = useState(false)
 
-  const companyId = user?.companyId
+  if (company.error) {
+    return (
+      <Page>
+        <PageHeader title="Company" />
+        <Section>
+          <ErrorState
+            error={company.error}
+            title="Unable to load your company"
+            onRetry={company.reload}
+          />
+        </Section>
+      </Page>
+    )
+  }
 
-  useEffect(() => {
-    if (!companyId) return
-    let active = true
-    fetchCompany(companyId)
-      .then((data) => {
-        if (!active) return
-        setCompany(data)
-        setName(data.name)
-      })
-      .catch((err) => {
-        notify.error('Could not load company settings.', errorMessage(err, ''))
-      })
-      .finally(() => {
-        if (active) setLoading(false)
-      })
-    return () => {
-      active = false
-    }
-  }, [companyId, notify])
+  if (company.loading || !company.data) {
+    return (
+      <Page>
+        <PageHeader title="Loading company…" />
+        <CardGridSkeleton count={2} />
+      </Page>
+    )
+  }
 
-  const handleSave = async (e: FormEvent) => {
-    e.preventDefault()
-    if (!companyId) return
+  const record = company.data
+
+  const save = async (event: FormEvent) => {
+    event.preventDefault()
     setSaving(true)
     try {
-      const updated = await updateCompany(companyId, { name: name.trim() })
-      setCompany(updated)
-      notify.success('Company settings saved successfully.')
+      await updateCompany(record.id, { name: name.trim() })
+      // Back to deriving from the record, which the reload refreshes.
+      setEdited(null)
+      company.reload()
+      notify.success('Company name updated.')
     } catch (err) {
-      notify.error('Unable to update company name.', errorMessage(err, ''))
+      notify.failure('save the company name', err)
     } finally {
       setSaving(false)
     }
   }
 
-  if (loading) {
-    return (
-      <div className="p-6">
-        <Loading label="Loading company settings…" />
-      </div>
-    )
-  }
-
-  if (!company) {
-    return (
-      <div className="p-6">
-        <PageHeader title="Company Settings" />
-        <Panel>
-          <p className="text-sm text-slate-500">No company details found for your account.</p>
-        </Panel>
-      </div>
-    )
-  }
-
   return (
-    <div className="p-6">
+    <Page>
       <PageHeader
-        title="Company Profile & Settings"
-        description="Manage company details and view tenant configuration."
+        icon={<CompanyAvatar name={record.name} size="lg" />}
+        title={record.name}
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            <ActiveBadge active={record.active} />
+            <span className="text-xs">{record.slug}</span>
+          </span>
+        }
       />
 
       <div className="max-w-2xl space-y-6">
-        <Panel title="General Information">
-          <form onSubmit={handleSave} className="space-y-4">
+        <Section title="Details">
+          <form onSubmit={save} className="space-y-4" noValidate>
             <TextField
-              label="Company Name"
+              label="Company name"
               value={name}
-              onChange={setName}
+              onChange={setEdited}
+              disabled={!editable || saving}
+              hint={
+                editable
+                  ? 'Shown across the product to everyone here.'
+                  : 'Only the platform owner can rename a company. Ask them if this needs to change.'
+              }
               required
             />
 
-            <div>
-              <label className="block text-[10px] font-semibold uppercase tracking-wider text-slate-400 mb-1.5">
-                Tenant Slug (System Identifier)
-              </label>
-              <input
-                type="text"
-                disabled
-                value={company.slug}
-                className="h-10 w-full rounded-md border border-slate-200 bg-slate-100 px-3 font-mono text-sm text-slate-500 cursor-not-allowed"
-              />
-              <p className="mt-1 text-[11px] text-slate-400">
-                The tenant slug is immutable once created to ensure API URL stability.
+            <div className="space-y-1.5">
+              <Label htmlFor="company-slug" className="text-xs font-medium">
+                Identifier
+              </Label>
+              <Input id="company-slug" value={record.slug} disabled readOnly />
+              <p className="text-xs text-muted-foreground">
+                Fixed when the company was created. It appears in links and records, so it does not
+                change.
               </p>
             </div>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={saving}
-                className={actionPrimaryCls}
-              >
-                {saving ? 'Saving…' : 'Save Changes'}
-              </button>
-            </div>
+            {editable && (
+              <Button type="submit" disabled={saving || !name.trim() || name.trim() === record.name}>
+                {saving && <Loader2 className="animate-spin" aria-hidden />}
+                Save changes
+              </Button>
+            )}
           </form>
-        </Panel>
+        </Section>
 
-        <Panel title="Tenant Status & Capacity">
-          <dl className="grid gap-4 sm:grid-cols-3 text-xs">
+        <Section title="At a glance">
+          <dl className="grid gap-4 sm:grid-cols-3 text-sm">
             <div>
-              <dt className="text-slate-400 font-semibold uppercase">Status</dt>
-              <dd className="mt-1">
-                <Badge tone={company.active ? 'success' : 'danger'}>
-                  {company.active ? 'Active' : 'Disabled'}
-                </Badge>
+              <dt className="text-xs text-muted-foreground">Status</dt>
+              <dd className="mt-1.5">
+                <ActiveBadge active={record.active} />
               </dd>
             </div>
             <div>
-              <dt className="text-slate-400 font-semibold uppercase">Registered Users</dt>
-              <dd className="mt-1 font-semibold text-slate-800">{company.userCount ?? 0}</dd>
+              <dt className="text-xs text-muted-foreground">People</dt>
+              <dd className="mt-1.5 font-medium tabular-nums text-foreground">
+                {record.userCount ?? 0}
+              </dd>
             </div>
             <div>
-              <dt className="text-slate-400 font-semibold uppercase">Assigned Dashboards</dt>
-              <dd className="mt-1 font-semibold text-slate-800">{company.dashboardCount ?? 0}</dd>
+              <dt className="text-xs text-muted-foreground">Dashboards available</dt>
+              <dd className="mt-1.5 font-medium tabular-nums text-foreground">
+                {record.dashboardCount ?? 0}
+              </dd>
             </div>
           </dl>
-        </Panel>
+          <p className="mt-4 text-xs text-muted-foreground">
+            Which dashboards your company may use is decided by the platform owner. You decide who
+            here sees each of them.
+          </p>
+        </Section>
       </div>
-    </div>
+    </Page>
   )
 }

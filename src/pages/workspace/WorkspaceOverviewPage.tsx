@@ -1,209 +1,211 @@
-import { useEffect, useState } from 'react'
-import {
-  ArrowRight,
-  ChartColumn,
-  Database,
-  LayoutDashboard,
-  UserPlus,
-  Users,
-  UsersRound,
-} from 'lucide-react'
-import { Link, useNavigate } from 'react-router-dom'
-import { listGroups, listUsers } from '@/api/adminApi'
+import { Link } from 'react-router-dom'
+import { ArrowRight, ChartColumn, KeyRound, LayoutDashboard, Plus, Users, UsersRound } from 'lucide-react'
+import { fetchWorkspaceOverview } from '@/api/workspaceApi'
+import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
+import { usePaths } from '@/app/usePaths'
 import { dedupeDashboards } from '@/services/dashboards'
-import AccessLevelBadge from '@/components/rbac/AccessLevelBadge'
-import StatCard from '@/ui/StatCard'
-import { EmptyState, Panel } from '@/ui/page'
-import { actionPrimaryCls } from '@/ui/styles'
-import type { AdminUser, Group } from '@/types/admin'
-import UserOnboardingModal from '@/components/onboarding/UserOnboardingModal'
+import { Page, PageHeader, Section } from '@/components/common/Page'
+import { StatCard } from '@/components/common/StatCard'
+import { AccessLevelBadge } from '@/components/common/Badges'
+import { EmptyState, ErrorState, StatSkeleton } from '@/components/common/States'
+import { Button } from '@/components/ui/button'
 
+/** "Good morning" and so on. Nothing hangs on it, so it stays cheap. */
+function greeting(): string {
+  const hour = new Date().getHours()
+  if (hour < 12) return 'Good morning'
+  if (hour < 18) return 'Good afternoon'
+  return 'Good evening'
+}
+
+/**
+ * The customer workspace's landing page.
+ *
+ * It says something different to each of the two roles that reach it, because
+ * they arrived for different reasons. A USER came to open a dashboard, so their
+ * dashboards are the page and nothing administrative appears at all. A
+ * COMPANY_ADMIN also runs the place, so they additionally get the state of their
+ * company - and those counts come from /api/workspace/overview, scoped to their
+ * own company by the server.
+ */
 export default function WorkspaceOverviewPage() {
   const { user, dashboards, can } = useAuth()
-  const navigate = useNavigate()
-  const listedDashboards = dedupeDashboards(dashboards)
-  const isCompanyAdmin = user?.role === 'COMPANY_ADMIN'
+  const paths = usePaths()
 
-  const [users, setUsers] = useState<AdminUser[] | null>(null)
-  const [groups, setGroups] = useState<Group[] | null>(null)
-  const [onboardingOpen, setOnboardingOpen] = useState(false)
+  const isAdmin = can('user.read')
+  const granted = dedupeDashboards(dashboards)
 
-  useEffect(() => {
-    if (!isCompanyAdmin) return
-    let active = true
-
-    if (can('user.read')) {
-      listUsers()
-        .then((data) => {
-          if (active) setUsers(data)
-        })
-        .catch(() => {})
-    }
-
-    if (can('group.read')) {
-      listGroups()
-        .then((data) => {
-          if (active) setGroups(data)
-        })
-        .catch(() => {})
-    }
-
-    return () => {
-      active = false
-    }
-  }, [isCompanyAdmin, can])
-
-  const greetingTime = () => {
-    const hour = new Date().getHours()
-    if (hour < 12) return 'Good morning'
-    if (hour < 17) return 'Good afternoon'
-    return 'Good evening'
-  }
+  // Only an administrator has the permission behind this, so a plain member
+  // never issues a request that would be refused.
+  const overview = useAsync(
+    () => (isAdmin ? fetchWorkspaceOverview() : Promise.resolve(null)),
+    [isAdmin]
+  )
+  const counts = overview.data
 
   return (
-    <div className="p-6">
-      <div className="mb-6 rounded-2xl border border-slate-200 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-white p-6 shadow-xs">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-              {greetingTime()}, {user?.displayName || user?.username || 'Team Member'}!
-            </h1>
-            <p className="mt-1 text-xs text-slate-500">
-              {isCompanyAdmin
-                ? 'Manage your team, allocate dashboard access, and explore enterprise analytics.'
-                : 'Explore your assigned business analytics dashboards and data insights.'}
-            </p>
-          </div>
+    <Page>
+      <PageHeader
+        title={`${greeting()}, ${user?.displayName || user?.username || ''}`}
+        description={
+          isAdmin
+            ? `You manage ${user?.companyName ?? 'your company'}.`
+            : 'Your analytics workspace.'
+        }
+      />
 
-          {isCompanyAdmin && can('user.create') && (
-            <button
-              type="button"
-              onClick={() => setOnboardingOpen(true)}
-              className={actionPrimaryCls}
-            >
-              <UserPlus size={14} />
-              Add Team Member
-            </button>
-          )}
-        </div>
-      </div>
-
-      {isCompanyAdmin && (
-        <div className="mb-6 grid gap-4 sm:grid-cols-3">
-          <StatCard
-            title="Team Members"
-            value={users?.length ?? '—'}
-            subtitle="Active company employees"
-            icon={Users}
-            tone="blue"
-            onClick={() => navigate('/team/users')}
-          />
-
-          <StatCard
-            title="Team Groups"
-            value={groups?.length ?? '—'}
-            subtitle="Functional teams (Sales, Marketing)"
-            icon={UsersRound}
-            tone="purple"
-            onClick={() => navigate('/team/groups')}
-          />
-
-          <StatCard
-            title="Assigned Dashboards"
-            value={listedDashboards.length}
-            subtitle="Available to company users"
+      {/* Dashboards first: for most people, this is the whole product. */}
+      <Section
+        title="Your dashboards"
+        description={
+          granted.length > 0
+            ? 'Live data, queried when you open one.'
+            : undefined
+        }
+        actions={
+          granted.length > 0 && (
+            <Button variant="ghost" size="sm" asChild>
+              <Link to={paths.dashboards}>
+                See all
+                <ArrowRight aria-hidden />
+              </Link>
+            </Button>
+          )
+        }
+        flush={granted.length === 0}
+      >
+        {granted.length === 0 ? (
+          <EmptyState
+            title="No dashboards yet"
+            body={
+              isAdmin
+                ? 'Nothing has been shared with you yet. You can give yourself access from the dashboard access screen.'
+                : 'Your administrator has not shared a dashboard with you yet.'
+            }
             icon={LayoutDashboard}
-            tone="emerald"
+            action={
+              isAdmin && paths.access ? (
+                <Button asChild>
+                  <Link to={paths.access}>
+                    <KeyRound aria-hidden />
+                    Manage dashboard access
+                  </Link>
+                </Button>
+              ) : undefined
+            }
           />
-        </div>
-      )}
+        ) : (
+          <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {granted.slice(0, 6).map((dashboard) => (
+              <li key={dashboard.id}>
+                <Link
+                  to={paths.dashboard(dashboard.id)}
+                  className="group flex h-full items-start gap-3 rounded-lg border border-border p-4 transition-colors hover:border-primary/40 hover:bg-accent/40"
+                >
+                  <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-md bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
+                    <ChartColumn className="size-4" aria-hidden />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-foreground">
+                      {dashboard.title || dashboard.id}
+                    </span>
+                    <span className="mt-1.5 block">
+                      <AccessLevelBadge level={dashboard.accessLevel} />
+                    </span>
+                  </span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
 
-      <div className="space-y-6">
-        <Panel
-          title="Your Dashboards"
-          description="Interactive analytics applications backed by the live query engine."
-          flush
-        >
-          {listedDashboards.length === 0 ? (
-            <div className="p-8 text-center">
-              <EmptyState
-                message="No dashboards have been granted to your account yet."
+      {/* Everything below is administration, and only an administrator sees it. */}
+      {isAdmin && (
+        <>
+          <h2 className="mt-8 mb-4 text-sm font-semibold text-foreground">
+            {user?.companyName ?? 'Your company'}
+          </h2>
+
+          {overview.error ? (
+            <Section>
+              <ErrorState
+                error={overview.error}
+                title="Unable to load your company's figures"
+                onRetry={overview.reload}
+                compact
+              />
+            </Section>
+          ) : overview.loading ? (
+            <StatSkeleton count={3} />
+          ) : (
+            <div className="grid gap-4 sm:grid-cols-3">
+              <StatCard
+                label="People"
+                value={counts?.users ?? null}
+                icon={Users}
+                to={paths.users}
                 hint={
-                  isCompanyAdmin
-                    ? 'Your company needs dashboards assigned by the platform owner.'
-                    : 'Your company administrator can grant dashboard access to your account or group.'
+                  counts
+                    ? `${counts.usersActive} active · ${counts.usersPending} invited`
+                    : undefined
                 }
               />
-            </div>
-          ) : (
-            <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
-              {listedDashboards.map((d) => (
-                <Link
-                  key={d.id}
-                  to={`/dashboards/${encodeURIComponent(d.id)}`}
-                  className="group flex flex-col justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-xs transition-all hover:border-blue-300 hover:shadow-sm"
-                >
-                  <div>
-                    <div className="flex items-start justify-between gap-2">
-                      <span className="grid h-9 w-9 place-items-center rounded-lg bg-blue-50 text-blue-600 transition-colors group-hover:bg-blue-600 group-hover:text-white">
-                        <ChartColumn size={17} />
-                      </span>
-                      <AccessLevelBadge level={d.accessLevel} />
-                    </div>
-
-                    <h3 className="mt-3 font-semibold text-slate-900 group-hover:text-blue-600">
-                      {d.title || d.id}
-                    </h3>
-                    <p className="mt-1 text-xs text-slate-500 line-clamp-2">
-                      Live data analysis with slice-and-dice aggregations, KPI metrics, and charts.
-                    </p>
-                  </div>
-
-                  <div className="mt-4 flex items-center justify-between border-t border-slate-100 pt-3 text-xs font-semibold text-blue-600">
-                    <span>Open Dashboard</span>
-                    <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
-                  </div>
-                </Link>
-              ))}
+              <StatCard
+                label="Groups"
+                value={counts?.groups ?? null}
+                icon={UsersRound}
+                to={paths.groups}
+                hint={counts ? `${counts.groupsActive} active` : undefined}
+              />
+              <StatCard
+                label="Dashboards available"
+                value={counts?.dashboards ?? null}
+                icon={LayoutDashboard}
+                to={paths.access ?? undefined}
+                hint={counts ? `${counts.dashboardsGranted} shared with you` : undefined}
+              />
             </div>
           )}
-        </Panel>
 
-        {/* Data Catalog Link Banner */}
-        {can('data.read') && (
-          <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-5 shadow-xs">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-lg bg-slate-100 text-slate-600">
-                <Database size={18} />
-              </div>
-              <div>
-                <h4 className="font-semibold text-slate-900">Explore Data Catalog</h4>
-                <p className="text-xs text-slate-500">
-                  Inspect available reporting metrics, measures, and dimension attributes.
+          {counts && counts.usersPending > 0 && (
+            <Section className="mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  <span className="font-medium text-foreground">
+                    {counts.usersPending}{' '}
+                    {counts.usersPending === 1 ? 'person has' : 'people have'}
+                  </span>{' '}
+                  not set a password yet. They cannot sign in until they use their invitation.
                 </p>
+                <Button variant="outline" size="sm" asChild>
+                  <Link to={paths.users}>
+                    Review invitations
+                    <ArrowRight aria-hidden />
+                  </Link>
+                </Button>
               </div>
-            </div>
-            <Link
-              to="/data"
-              className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-            >
-              Browse Data
-            </Link>
-          </div>
-        )}
-      </div>
+            </Section>
+          )}
 
-      {onboardingOpen && (
-        <UserOnboardingModal
-          onCreated={() => {
-            if (can('user.read')) {
-              listUsers().then(setUsers).catch(() => {})
-            }
-          }}
-          onClose={() => setOnboardingOpen(false)}
-        />
+          {counts && counts.users <= 1 && (
+            <Section className="mt-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">
+                  You are the only person here. Add colleagues and they will be invited by email.
+                </p>
+                <Button size="sm" asChild>
+                  <Link to={paths.users}>
+                    <Plus aria-hidden />
+                    Add a colleague
+                  </Link>
+                </Button>
+              </div>
+            </Section>
+          )}
+        </>
       )}
-    </div>
+    </Page>
   )
 }

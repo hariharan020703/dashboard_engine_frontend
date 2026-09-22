@@ -1,89 +1,164 @@
 import type { LucideIcon } from 'lucide-react'
-import { Building2, Database, House, ShieldCheck, User, Users, UsersRound } from 'lucide-react'
+import {
+  Activity,
+  Bot,
+  BookOpen,
+  Building2,
+  Database,
+  KeyRound,
+  LayoutDashboard,
+  Layers,
+  Home,
+  Settings,
+  ShieldCheck,
+  SlidersHorizontal,
+  UserCircle,
+  Users,
+  UsersRound,
+} from 'lucide-react'
+import type { AppPaths } from '@/app/paths'
 
-export type NavSection = 'workspace' | 'administration' | 'account'
+/**
+ * The sidebar, as data.
+ *
+ * Both shells are described here rather than in the component that draws them,
+ * so "what can this account reach" is a list you can read, and adding a screen
+ * is one entry rather than an edit to JSX.
+ *
+ * Two rules hold everywhere:
+ *
+ *   - an item appears only if the account holds its permission. The sidebar is
+ *     not the security boundary - the server is - but offering somebody a link
+ *     that will refuse them is its own kind of broken.
+ *
+ *   - every path comes from the shell's AppPaths table. No item writes a URL,
+ *     which is what stops the platform console linking into the workspace.
+ */
 
 export interface NavItem {
   label: string
-  summary: string
   path: string
   icon: LucideIcon
-  section: NavSection
   permission?: string
-  nested?: boolean
+  /** Matches child routes too - '/platform/companies' stays lit on '/…/42'. */
+  exact?: boolean
 }
 
-export const NAV_SECTIONS: Array<{ id: NavSection; label: string | null }> = [
-  { id: 'workspace', label: null },
-  { id: 'administration', label: 'Administration' },
-  { id: 'account', label: 'Account' },
-]
-
-const NAV: NavItem[] = [
-  {
-    section: 'workspace',
-    label: 'Home',
-    summary: 'The dashboards you have been granted, and where to go next.',
-    path: '/',
-    icon: House,
-  },
-  {
-    section: 'workspace',
-    label: 'Data',
-    summary: 'The source table behind a dashboard, and every column in it.',
-    path: '/data',
-    icon: Database,
-    permission: 'data.read',
-  },
-  {
-    section: 'administration',
-    label: 'Companies',
-    summary: 'Customer companies, their people and the dashboards they may use.',
-    path: '/admin/companies',
-    icon: Building2,
-    permission: 'company.read',
-    nested: true,
-  },
-  {
-    section: 'administration',
-    label: 'Users',
-    summary: 'Accounts, roles, dashboard access and row-level data scopes.',
-    path: '/admin/users',
-    icon: Users,
-    permission: 'user.read',
-    nested: true,
-  },
-  {
-    section: 'administration',
-    label: 'Groups',
-    summary: 'Teams that carry dashboard access for all of their members.',
-    path: '/admin/groups',
-    icon: UsersRound,
-    permission: 'group.read',
-    nested: true,
-  },
-  {
-    section: 'administration',
-    label: 'Roles',
-    summary: 'What each of the three roles may do, from the permission catalogue.',
-    path: '/admin/roles',
-    icon: ShieldCheck,
-    permission: 'role.read',
-  },
-  {
-    section: 'account',
-    label: 'Profile',
-    summary: 'Your role, permissions, sessions and data scopes.',
-    path: '/profile',
-    icon: User,
-  },
-]
-
-export function visibleNav(can: (permission: string) => boolean): NavItem[] {
-  return NAV.filter((item) => !item.permission || can(item.permission))
+export interface NavGroup {
+  /** Null renders the items with no heading, for the first group. */
+  title: string | null
+  items: NavItem[]
 }
 
+/** Drops the items this account may not use, then the groups left empty. */
+function visible(groups: NavGroup[], can: (permission: string) => boolean): NavGroup[] {
+  return groups
+    .map((group) => ({
+      ...group,
+      items: group.items.filter((item) => !item.permission || can(item.permission)),
+    }))
+    .filter((group) => group.items.length > 0)
+}
+
+function platformGroups(paths: AppPaths): NavGroup[] {
+  return [
+    {
+      title: null,
+      items: [{ label: 'Overview', path: paths.overview, icon: Home, exact: true }],
+    },
+    {
+      title: 'Customers',
+      items: [
+        { label: 'Companies', path: paths.companies!, icon: Building2, permission: 'company.read' },
+        { label: 'Users', path: paths.users, icon: Users, permission: 'user.read' },
+      ],
+    },
+    {
+      title: 'Product',
+      items: [
+        { label: 'Dashboards', path: paths.dashboards, icon: LayoutDashboard, permission: 'dashboard.read' },
+        { label: 'Data sources', path: paths.data, icon: Database, permission: 'data.read' },
+      ],
+    },
+    {
+      title: 'Intelligence',
+      items: [
+        { label: 'Context layer', path: paths.context, icon: Layers, permission: 'context.read' },
+        { label: 'Analyst agent', path: paths.agent(), icon: Bot },
+        { label: 'Playbooks', path: paths.playbooks, icon: BookOpen },
+      ],
+    },
+    {
+      title: 'Access',
+      items: [
+        { label: 'Roles', path: paths.roles!, icon: ShieldCheck, permission: 'role.read' },
+        { label: 'Groups', path: paths.groups, icon: UsersRound, permission: 'group.read' },
+      ],
+    },
+    {
+      title: 'System',
+      items: [
+        { label: 'Audit log', path: paths.audit!, icon: Activity },
+        { label: 'Settings', path: paths.settings, icon: Settings },
+      ],
+    },
+  ]
+}
+
+function workspaceGroups(paths: AppPaths): NavGroup[] {
+  return [
+    {
+      title: null,
+      items: [{ label: 'Overview', path: paths.overview, icon: Home, exact: true }],
+    },
+    {
+      title: 'Analytics',
+      items: [
+        { label: 'Dashboards', path: paths.dashboards, icon: LayoutDashboard, permission: 'dashboard.read' },
+        { label: 'Data', path: paths.data, icon: Database, permission: 'data.read' },
+      ],
+    },
+    {
+      title: 'Intelligence',
+      items: [
+        { label: 'Context layer', path: paths.context, icon: Layers, permission: 'context.read' },
+        { label: 'Analyst agent', path: paths.agent(), icon: Bot },
+        { label: 'Playbooks', path: paths.playbooks, icon: BookOpen },
+      ],
+    },
+    {
+      title: 'Team',
+      items: [
+        { label: 'Members', path: paths.users, icon: Users, permission: 'user.read' },
+        { label: 'Groups', path: paths.groups, icon: UsersRound, permission: 'group.read' },
+        { label: 'Dashboard access', path: paths.access!, icon: KeyRound, permission: 'access.read' },
+      ],
+    },
+    {
+      title: 'Settings',
+      items: [
+        {
+          label: 'Company',
+          path: paths.companySettings!,
+          icon: SlidersHorizontal,
+          permission: 'company.read',
+        },
+        { label: 'Your account', path: paths.profile, icon: UserCircle },
+      ],
+    },
+  ]
+}
+
+/** The navigation this account actually sees, for the shell it is in. */
+export function navigationFor(
+  paths: AppPaths,
+  can: (permission: string) => boolean
+): NavGroup[] {
+  return visible(paths.shell === 'platform' ? platformGroups(paths) : workspaceGroups(paths), can)
+}
+
+/** Whether `item` is the screen currently open. */
 export function isNavItemActive(item: NavItem, pathname: string): boolean {
-  if (pathname === item.path) return true
-  return Boolean(item.nested) && pathname.startsWith(`${item.path}/`)
+  if (item.exact) return pathname === item.path
+  return pathname === item.path || pathname.startsWith(`${item.path}/`)
 }

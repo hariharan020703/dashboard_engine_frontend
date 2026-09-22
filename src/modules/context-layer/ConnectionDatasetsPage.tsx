@@ -1,274 +1,292 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Link, useParams } from 'react-router-dom'
-import { ArrowLeft, Search } from 'lucide-react'
-import { errorMessage } from '@/api/client'
+import { useMemo, useState } from 'react'
+import { useParams } from 'react-router-dom'
+import { Loader2, Search } from 'lucide-react'
+import { errorMessage } from '@/api/http'
 import { useAuth } from '@/context/authContext'
-import { useNotification } from '@/ui/notificationContext'
-import { Badge, EmptyState, Loading, PageHeader, Panel } from '@/ui/page'
-import { inputCls, primaryButtonCls, actionButtonCls } from '@/ui/styles'
+import { usePaths } from '@/app/usePaths'
+import { useAsync } from '@/hooks/useAsync'
+import { Page, PageHeader, Section } from '@/components/common/Page'
+import {
+  CardGridSkeleton,
+  EmptyState,
+  ErrorState,
+  InlineLoading,
+  NoResultsState,
+} from '@/components/common/States'
+import { notify } from '@/components/common/notify'
+import { Badge } from '@/components/ui/badge'
+import { Button } from '@/components/ui/button'
+import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
+import { cn } from '@/lib/utils'
 import { fetchDatasets, getConnection, saveSelection } from './api'
-import type { Connection, WarehouseDataset } from './types'
+import type { WarehouseDataset } from './types'
 
 /**
  * Choosing which datasets a context is built from.
  *
- * The list is fetched live from the warehouse every time this page opens,
- * never cached. A stale list means ticking a dataset id that no longer
- * resolves, and that failure would surface much later, somewhere else, for a
- * reason invisible from here.
+ * The list is fetched live from the warehouse every time this page opens, never
+ * cached. A stale list means ticking a dataset id that no longer resolves, and
+ * that failure would surface much later, somewhere else, for a reason invisible
+ * from here.
  *
- * The connection is loaded separately from the datasets, so a revoked token
- * still renders the page with its saved selection and an explanation, rather
- * than an empty screen.
+ * The connection and the dataset list are loaded separately and fail
+ * separately, which is the important part: a revoked token still renders the
+ * page with its saved selection and an explanation, rather than an empty screen.
  */
 export default function ConnectionDatasetsPage() {
   const { id = '' } = useParams()
   const { can } = useAuth()
-  const notify = useNotification()
+  const paths = usePaths()
   const canManage = can('context.manage')
 
-  const [connection, setConnection] = useState<Connection | null>(null)
-  const [datasets, setDatasets] = useState<WarehouseDataset[] | null>(null)
-  const [fetchError, setFetchError] = useState<string | null>(null)
-  const [chosen, setChosen] = useState<Set<string>>(new Set())
+  const connection = useAsync(() => getConnection(id), [id])
+  const warehouse = useAsync(() => fetchDatasets(id), [id])
+
+  /**
+   * The ticked datasets.
+   *
+   * Null means "whatever is saved", so the selection is DERIVED from the loaded
+   * connection until somebody actually ticks something - rather than being
+   * copied into state by an effect, which would re-render twice on every load
+   * and go stale whenever the connection reloaded. Saving sets it back to null,
+   * so the screen returns to showing the server's answer.
+   */
+  const [edited, setEdited] = useState<Set<string> | null>(null)
   const [query, setQuery] = useState('')
   const [saving, setSaving] = useState(false)
 
-  const [reloadToken, setReloadToken] = useState(0)
-  const reload = useCallback(() => setReloadToken((n) => n + 1), [])
+  const saved = useMemo(
+    () => new Set((connection.data?.selectedDatasets ?? []).map((dataset) => dataset.id)),
+    [connection.data]
+  )
+  const chosen = edited ?? saved
 
-  useEffect(() => {
-    let cancelled = false
+  const setChosen = (update: (current: Set<string>) => Set<string>) =>
+    setEdited((current) => update(current ?? saved))
 
-    void (async () => {
-      try {
-        const found = await getConnection(id)
-        if (cancelled) return
-        setConnection(found)
-        setChosen(new Set((found.selectedDatasets ?? []).map((d) => d.id)))
-      } catch (err) {
-        if (cancelled) return
-        notify.error('Could not load the connection.', errorMessage(err, ''))
-        return
-      }
-
-      try {
-        const result = await fetchDatasets(id)
-        if (cancelled) return
-        setDatasets(result.datasets)
-        setFetchError(null)
-      } catch (err) {
-        if (cancelled) return
-        setDatasets([])
-        setFetchError(errorMessage(err, 'The warehouse could not be reached.'))
-      }
-    })()
-
-    return () => {
-      cancelled = true
-    }
-  }, [id, reloadToken, notify])
+  const datasets: WarehouseDataset[] | null = warehouse.data?.datasets ?? null
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase()
     const rows = datasets ?? []
     if (!needle) return rows
     return rows.filter(
-      (d) => d.name.toLowerCase().includes(needle) || d.id.toLowerCase().includes(needle)
+      (dataset) =>
+        dataset.name.toLowerCase().includes(needle) || dataset.id.toLowerCase().includes(needle)
     )
   }, [datasets, query])
 
-  const toggle = (datasetId: string) => {
-    setChosen((current) => {
-      const next = new Set(current)
-      if (next.has(datasetId)) next.delete(datasetId)
-      else next.add(datasetId)
-      return next
-    })
-  }
+  const dirty = saved.size !== chosen.size || [...chosen].some((datasetId) => !saved.has(datasetId))
 
-  const onSave = async () => {
+  const save = async () => {
     if (!datasets) return
     setSaving(true)
     /*
      * Sent with the name and counts alongside the id, so the selection still
-     * renders when the warehouse is unreachable. The id is the record; the
-     * rest is a copy taken now.
+     * renders when the warehouse is unreachable. The id is the record; the rest
+     * is a copy taken now.
      */
     const payload = datasets
-      .filter((d) => chosen.has(d.id))
-      .map((d) => ({ id: d.id, name: d.name, rowCount: d.rowCount, columnCount: d.columnCount }))
+      .filter((dataset) => chosen.has(dataset.id))
+      .map((dataset) => ({
+        id: dataset.id,
+        name: dataset.name,
+        rowCount: dataset.rowCount,
+        columnCount: dataset.columnCount,
+      }))
 
     try {
-      const updated = await saveSelection(id, payload)
-      setConnection(updated)
+      await saveSelection(id, payload)
+      // Back to deriving from the server's answer, which the reload refreshes.
+      setEdited(null)
+      connection.reload()
       notify.success(
         payload.length === 0
           ? 'Selection cleared.'
           : `${payload.length} dataset${payload.length === 1 ? '' : 's'} selected.`,
-        'Their ids are saved and ready for a context to be built from them.'
+        'Saved and ready for a context to be built from them.'
       )
     } catch (err) {
-      notify.error('Unable to save the selection.', errorMessage(err, ''))
+      notify.failure('save the selection', err)
     } finally {
       setSaving(false)
     }
   }
 
-  const saved = new Set((connection?.selectedDatasets ?? []).map((d) => d.id))
-  const dirty =
-    saved.size !== chosen.size || [...chosen].some((datasetId) => !saved.has(datasetId))
-
-  if (!connection) {
+  if (connection.error) {
     return (
-      <div className="p-6">
-        <Panel flush>
-          <Loading label="Loading connection…" />
-        </Panel>
-      </div>
+      <Page>
+        <PageHeader
+          title="Connection"
+          crumbs={[{ label: 'Context layer', to: paths.context }, { label: 'Not available' }]}
+        />
+        <Section>
+          <ErrorState
+            error={connection.error}
+            title="Unable to load this connection"
+            onRetry={connection.reload}
+          />
+        </Section>
+      </Page>
     )
   }
 
-  return (
-    <div className="p-6">
-      <Link
-        to="/context"
-        className="mb-3 inline-flex items-center gap-1.5 text-xs font-medium text-slate-500 hover:text-slate-800"
-      >
-        <ArrowLeft size={13} />
-        Context Layer
-      </Link>
+  if (connection.loading || !connection.data) {
+    return (
+      <Page>
+        <PageHeader title="Loading connection…" />
+        <CardGridSkeleton count={2} />
+      </Page>
+    )
+  }
 
+  const record = connection.data
+
+  return (
+    <Page>
       <PageHeader
-        title={connection.name}
-        description={`${connection.provider} · ${connection.host} · token ${connection.secretHint}`}
+        crumbs={[{ label: 'Context layer', to: paths.context }, { label: record.name }]}
+        title={record.name}
+        description={`${record.provider} · ${record.host} · token ${record.secretHint}`}
         actions={
-          canManage ? (
-            <button
-              type="button"
-              className={primaryButtonCls}
-              disabled={saving || !dirty || datasets === null}
-              onClick={() => void onSave()}
-            >
-              {saving ? 'Processing…' : dirty ? `Save ${chosen.size} selected` : 'Proceed Selected'}
-            </button>
-          ) : null
+          canManage && (
+            <Button disabled={saving || !dirty || datasets === null} onClick={() => void save()}>
+              {saving && <Loader2 className="animate-spin" aria-hidden />}
+              {dirty ? `Save ${chosen.size} selected` : 'Saved'}
+            </Button>
+          )
         }
       />
 
-      {fetchError && (
+      {/*
+        A warning rather than an error page: the connection loaded, the saved
+        selection is real and worth showing, and only the live list is missing.
+      */}
+      {Boolean(warehouse.error) && (
         <div
           role="alert"
-          className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] leading-snug text-amber-800"
+          className="mb-6 rounded-lg border border-warning/30 bg-warning/10 px-4 py-3 text-sm text-warning-foreground"
         >
-          <p className="font-semibold">The dataset list could not be loaded.</p>
-          <p className="mt-0.5">{fetchError}</p>
-          <p className="mt-1 text-amber-700/80">
-            The selection below is what was saved earlier. It cannot be changed until the
-            warehouse answers again.
+          <p className="font-medium">The dataset list could not be loaded.</p>
+          <p className="mt-0.5">
+            {errorMessage(warehouse.error, 'The warehouse could not be reached.')}
           </p>
-          <button type="button" className={`${actionButtonCls} mt-2`} onClick={reload}>
+          <p className="mt-1 opacity-80">
+            What is saved is shown below. It cannot be changed until the warehouse answers again.
+          </p>
+          <Button variant="outline" size="sm" className="mt-2" onClick={warehouse.reload}>
             Try again
-          </button>
+          </Button>
         </div>
       )}
 
-      {connection.selectedDatasets && connection.selectedDatasets.length > 0 && (
-        <Panel
-          title="Saved selection"
-          description="These dataset ids are what a context will be built from."
-          flush
-        >
-          <ul className="divide-y divide-slate-100">
-            {connection.selectedDatasets.map((d) => (
-              <li key={d.id} className="flex items-center gap-3 px-5 py-2">
-                <span className="min-w-0 flex-1 truncate text-sm text-slate-700">
-                  {d.name || d.id}
-                </span>
-                <code className="shrink-0 text-[11px] text-slate-400">{d.id}</code>
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
+      <div className="space-y-6">
+        {record.selectedDatasets && record.selectedDatasets.length > 0 && (
+          <Section
+            title="Saved selection"
+            description="What a context will be built from."
+            flush
+          >
+            <ul className="divide-y divide-border">
+              {record.selectedDatasets.map((dataset) => (
+                <li key={dataset.id} className="flex items-center gap-3 px-5 py-2.5">
+                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">
+                    {dataset.name || dataset.id}
+                  </span>
+                  <code className="shrink-0 text-xs text-muted-foreground">{dataset.id}</code>
+                </li>
+              ))}
+            </ul>
+          </Section>
+        )}
 
-      <div className="mt-6">
-        <Panel
+        <Section
           title="Datasets in this warehouse"
           description={
             datasets === null
-              ? 'Reading the warehouse…'
+              ? undefined
               : `${datasets.length} visible to this token. Tick the ones to build a context from.`
           }
           flush
         >
-          {datasets === null && <Loading label="Reading the warehouse…" />}
-
-          {datasets !== null && datasets.length > 0 && (
-            <div className="border-b border-slate-100 px-5 py-2.5">
-              <div className="relative">
-                <Search
-                  size={14}
-                  className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400"
-                />
-                <input
-                  className={`${inputCls} pl-8`}
-                  placeholder="Filter by name or id…"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  aria-label="Filter datasets"
-                />
-              </div>
-            </div>
-          )}
-
-          {datasets !== null && datasets.length === 0 && !fetchError && (
+          {warehouse.loading ? (
+            <InlineLoading label="Reading the warehouse…" />
+          ) : datasets === null ? null : datasets.length === 0 ? (
             <EmptyState
-              message="This token can see no datasets."
-              hint="The credential is valid, but the Domo account behind it has not been given access to any dataset."
+              title="This token can see no datasets"
+              body="The credential is valid, but the account behind it has not been given access to any dataset."
+              compact
             />
-          )}
+          ) : (
+            <>
+              <div className="border-b border-border px-5 py-3">
+                <div className="relative max-w-xs">
+                  <Search
+                    className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+                    aria-hidden
+                  />
+                  <Input
+                    className="pl-8"
+                    placeholder="Filter by name or id…"
+                    value={query}
+                    onChange={(event) => setQuery(event.target.value)}
+                    aria-label="Filter datasets"
+                  />
+                </div>
+              </div>
 
-          {datasets !== null && visible.length === 0 && datasets.length > 0 && (
-            <EmptyState message={`Nothing matches "${query}".`} />
+              {visible.length === 0 ? (
+                <NoResultsState query={query} onClear={() => setQuery('')} />
+              ) : (
+                <ul className="divide-y divide-border">
+                  {visible.map((dataset) => {
+                    const ticked = chosen.has(dataset.id)
+                    return (
+                      <li key={dataset.id}>
+                        <label
+                          className={cn(
+                            'flex items-center gap-3 px-5 py-2.5 transition-colors',
+                            ticked ? 'bg-accent/40' : 'hover:bg-muted/50',
+                            canManage ? 'cursor-pointer' : 'cursor-not-allowed opacity-70'
+                          )}
+                        >
+                          <Checkbox
+                            checked={ticked}
+                            disabled={!canManage}
+                            onCheckedChange={() =>
+                              setChosen((current) => {
+                                const next = new Set(current)
+                                if (next.has(dataset.id)) next.delete(dataset.id)
+                                else next.add(dataset.id)
+                                return next
+                              })
+                            }
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm text-foreground">
+                              {dataset.name}
+                            </span>
+                            <span className="block truncate text-xs text-muted-foreground">
+                              {dataset.id}
+                              {dataset.owner ? ` · ${dataset.owner}` : ''}
+                            </span>
+                          </span>
+                          {dataset.rowCount !== null && (
+                            <Badge variant="outline" className="shrink-0 tabular-nums">
+                              {dataset.rowCount.toLocaleString()} rows
+                            </Badge>
+                          )}
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </>
           )}
-
-          {visible.length > 0 && (
-            <ul className="divide-y divide-slate-100">
-              {visible.map((dataset) => {
-                const ticked = chosen.has(dataset.id)
-                return (
-                  <li key={dataset.id}>
-                    <label
-                      className={`flex cursor-pointer items-center gap-3 px-5 py-2.5 transition-colors ${
-                        ticked ? 'bg-blue-50/40' : 'hover:bg-slate-50'
-                      } ${canManage ? '' : 'cursor-not-allowed opacity-70'}`}
-                    >
-                      <input
-                        type="checkbox"
-                        className="h-3.5 w-3.5 shrink-0 accent-blue-600"
-                        checked={ticked}
-                        disabled={!canManage}
-                        onChange={() => toggle(dataset.id)}
-                      />
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm text-slate-800">{dataset.name}</span>
-                        <span className="block truncate text-[11px] text-slate-400">
-                          {dataset.id}
-                          {dataset.owner ? ` · ${dataset.owner}` : ''}
-                        </span>
-                      </span>
-                      {dataset.rowCount !== null && (
-                        <Badge tone="neutral">{dataset.rowCount.toLocaleString()} rows</Badge>
-                      )}
-                    </label>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </Panel>
+        </Section>
       </div>
-    </div>
+    </Page>
   )
 }

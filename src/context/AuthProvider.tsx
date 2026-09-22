@@ -1,15 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { restoreSession, setAccessToken, setSessionLostHandler } from '@/api/client'
+import { restoreSession, setAccessToken, setSessionLostHandler } from '@/api/http'
 import { fetchProfile, login as loginRequest, logout as logoutRequest } from '@/api/authApi'
-import { useNotification } from '@/ui/notificationContext'
+import { notify } from '@/components/common/notify'
 import { AuthContext } from './authContext'
 import type { AuthState } from './authContext'
 import type { AccessibleDashboard, AuthStatus, AuthUser, SessionResponse } from '@/types/auth'
 
 export default function AuthProvider({ children }: { children: ReactNode }) {
-  const notify = useNotification()
-
   const [status, setStatus] = useState<AuthStatus>('RESTORING')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [dashboards, setDashboards] = useState<AccessibleDashboard[]>([])
@@ -52,7 +50,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       }
     })
     return () => setSessionLostHandler(null)
-  }, [clearSession, notify])
+  }, [clearSession])
 
   // Recover a session from the refresh cookie, once, on start.
   useEffect(() => {
@@ -114,7 +112,7 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       clearSession('UNAUTHENTICATED')
     }
-  }, [clearSession, notify])
+  }, [clearSession])
 
   const value = useMemo<AuthState>(
     () => ({

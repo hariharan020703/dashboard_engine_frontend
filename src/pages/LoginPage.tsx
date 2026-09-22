@@ -1,49 +1,56 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { LoaderCircle, LogIn } from 'lucide-react'
+import { Loader2, LogIn } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import AuthLayout from '@/layouts/AuthLayout'
-import { useNotification } from '@/ui/notificationContext'
-import { FormError } from '@/ui/feedback'
-import { PasswordField, TextField } from '@/ui/fields'
-import { cardCls, primaryButtonCls } from '@/ui/styles'
-import { errorCode, errorMessage } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import { FormError, PasswordField, TextField } from '@/components/common/Fields'
+import { notify } from '@/components/common/notify'
+import { errorCode, errorMessage } from '@/api/http'
 
 export default function LoginPage() {
   const { signIn } = useAuth()
-  const notify = useNotification()
 
   const [identifier, setIdentifier] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault()
     if (pending) return
+
     setError(null)
     setPending(true)
     try {
       await signIn(identifier.trim(), password)
-      notify.success('Signed in.')
-      // On success the provider flips status and this screen unmounts - there
+      // On success the provider flips status and this screen unmounts, so there
       // is deliberately no setPending(false) on that path.
     } catch (err) {
       const code = errorCode(err)
       setError(errorMessage(err, 'Sign-in failed.'))
 
-      // A rate limit or a switched-off account is not a typo, and the person
-      // needs to notice it rather than re-read the same red line.
+      /*
+       * A rate limit, a switched-off account or a suspended company is not a
+       * typo - re-reading the same red line will not fix it - so those get a
+       * toast as well, which persists after the field is edited.
+       */
       if (code === 'RATE_LIMITED' || code === 'ACCOUNT_DISABLED' || code === 'COMPANY_DISABLED') {
-        notify.warning(errorMessage(err, 'Sign-in failed.'))
+        notify.warning('Cannot sign in', errorMessage(err, 'Sign-in failed.'))
       }
       setPending(false)
     }
   }
 
+  const ready = identifier.trim().length > 0 && password.length > 0
+
   return (
-    <AuthLayout title="BI Dashboard" subtitle="Sign in to continue">
-      <form onSubmit={onSubmit} className={`space-y-4 ${cardCls}`}>
+    <AuthLayout
+      title="Elze Analytics"
+      subtitle="Sign in to your workspace"
+      footer="Accounts are created by an administrator. Check your email for an activation link."
+    >
+      <form onSubmit={onSubmit} className="space-y-4" noValidate>
         <TextField
           label="Username or email"
           value={identifier}
@@ -51,6 +58,7 @@ export default function LoginPage() {
           autoComplete="username"
           autoFocus
           disabled={pending}
+          required
         />
         <PasswordField
           label="Password"
@@ -62,27 +70,19 @@ export default function LoginPage() {
 
         {error && <FormError message={error} />}
 
-        <button
-          type="submit"
-          className={primaryButtonCls}
-          disabled={pending || !identifier.trim() || !password}
-        >
+        <Button type="submit" className="w-full" size="lg" disabled={pending || !ready}>
           {pending ? (
             <>
-              <LoaderCircle size={16} className="animate-spin" />
+              <Loader2 className="animate-spin" aria-hidden />
               Signing in…
             </>
           ) : (
             <>
-              <LogIn size={16} />
+              <LogIn aria-hidden />
               Sign in
             </>
           )}
-        </button>
-
-        <p className="text-center text-[12px] text-slate-400">
-          Accounts are created by an administrator. Check your email for an activation link.
-        </p>
+        </Button>
       </form>
     </AuthLayout>
   )

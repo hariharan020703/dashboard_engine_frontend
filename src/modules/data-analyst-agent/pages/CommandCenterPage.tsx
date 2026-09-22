@@ -1,6 +1,6 @@
 import * as React from "react"
 import { useLocation, useNavigate, useParams } from "react-router-dom"
-import { toast, Toaster } from "sonner"
+import { toast } from "sonner"
 import {
   ArrowDownToLine,
   ArrowRightCircle,
@@ -578,7 +578,7 @@ export function CommandCenterPage({
         sessionId={id}
         userId={userId}
       />
-      <Toaster />
+      {/* Toasts render from the single Toaster mounted in App. */}
     </div>
   )
 }

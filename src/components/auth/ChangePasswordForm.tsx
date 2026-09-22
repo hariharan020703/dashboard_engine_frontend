@@ -1,27 +1,36 @@
 import { useState } from 'react'
 import type { FormEvent } from 'react'
-import { KeyRound, LoaderCircle } from 'lucide-react'
+import { KeyRound, Loader2 } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { changePassword } from '@/api/authApi'
-import { useNotification } from '@/ui/notificationContext'
-import { FormError } from '@/ui/feedback'
-import { PasswordField } from '@/ui/fields'
-import { ghostButtonCls, primaryButtonCls } from '@/ui/styles'
-import { errorMessage } from '@/api/client'
+import { Button } from '@/components/ui/button'
+import { FormError, PasswordField } from '@/components/common/Fields'
+import { notify } from '@/components/common/notify'
+import { errorMessage } from '@/api/http'
 
+/** Mirrors MIN_PASSWORD_LENGTH on the server, which is the enforcing side. */
 const MIN_LENGTH = 8
 
+/**
+ * Changing your own password.
+ *
+ * Used in two places - the account menu, and the gate an account is held behind
+ * when it must set a password before doing anything else - so the surrounding
+ * explanation belongs to the caller and this is only the form.
+ *
+ * Each rule is checked as it becomes checkable and reported next to the field
+ * it concerns, rather than all at once after a failed submit.
+ */
 export default function ChangePasswordForm({
   onDone,
   onCancel,
-  cancelLabel,
+  cancelLabel = 'Cancel',
 }: {
   onDone: () => void
   onCancel?: () => void
   cancelLabel?: string
 }) {
   const { adoptSession, refresh } = useAuth()
-  const notify = useNotification()
 
   const [current, setCurrent] = useState('')
   const [next, setNext] = useState('')
@@ -29,21 +38,27 @@ export default function ChangePasswordForm({
   const [error, setError] = useState<string | null>(null)
   const [pending, setPending] = useState(false)
 
-  const mismatch = confirm.length > 0 && next !== confirm
   const tooShort = next.length > 0 && next.length < MIN_LENGTH
   const unchanged = next.length > 0 && next === current
-  const ready = current && next && confirm && !mismatch && !tooShort && !unchanged
+  const mismatch = confirm.length > 0 && next !== confirm
+  const ready = Boolean(current && next && confirm) && !tooShort && !unchanged && !mismatch
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault()
     if (pending || !ready) return
+
     setError(null)
     setPending(true)
     try {
+      /*
+       * The server rotates the session as part of the change - every other
+       * session is revoked - so the response carries a new access token that
+       * has to be adopted before anything else is called.
+       */
       const session = await changePassword(current, next)
       adoptSession(session)
       await refresh()
-      notify.success('Your password has been changed.', 'Any other sessions have been signed out.')
+      notify.success('Your password has been changed.', 'Every other session has been signed out.')
       onDone()
     } catch (err) {
       setError(errorMessage(err, 'Could not change the password.'))
@@ -52,7 +67,7 @@ export default function ChangePasswordForm({
   }
 
   return (
-    <form onSubmit={onSubmit} className="space-y-4">
+    <form onSubmit={onSubmit} className="space-y-4" noValidate>
       <PasswordField
         label="Current password"
         value={current}
@@ -67,7 +82,14 @@ export default function ChangePasswordForm({
         onChange={setNext}
         autoComplete="new-password"
         disabled={pending}
-        hint={`At least ${MIN_LENGTH} characters, including a digit or symbol.`}
+        hint={`At least ${MIN_LENGTH} characters.`}
+        error={
+          tooShort
+            ? `Must be at least ${MIN_LENGTH} characters.`
+            : unchanged
+              ? 'Must differ from your current password.'
+              : null
+        }
       />
       <PasswordField
         label="Confirm new password"
@@ -75,35 +97,35 @@ export default function ChangePasswordForm({
         onChange={setConfirm}
         autoComplete="new-password"
         disabled={pending}
+        error={mismatch ? 'The two passwords do not match.' : null}
       />
 
-      {mismatch && <FormError message="The two new passwords do not match." />}
-      {!mismatch && tooShort && (
-        <FormError message={`The new password must be at least ${MIN_LENGTH} characters.`} />
-      )}
-      {!mismatch && !tooShort && unchanged && (
-        <FormError message="The new password must differ from the current one." />
-      )}
       {error && <FormError message={error} />}
 
-      <div className="space-y-2">
-        <button type="submit" className={primaryButtonCls} disabled={pending || !ready}>
+      <div className="flex flex-col gap-2 sm:flex-row-reverse">
+        <Button type="submit" className="sm:flex-1" disabled={pending || !ready}>
           {pending ? (
             <>
-              <LoaderCircle size={16} className="animate-spin" />
+              <Loader2 className="animate-spin" aria-hidden />
               Saving…
             </>
           ) : (
             <>
-              <KeyRound size={16} />
+              <KeyRound aria-hidden />
               Change password
             </>
           )}
-        </button>
+        </Button>
         {onCancel && (
-          <button type="button" className={ghostButtonCls} onClick={onCancel} disabled={pending}>
-            {cancelLabel || 'Cancel'}
-          </button>
+          <Button
+            type="button"
+            variant="outline"
+            className="sm:flex-1"
+            onClick={onCancel}
+            disabled={pending}
+          >
+            {cancelLabel}
+          </Button>
         )}
       </div>
     </form>

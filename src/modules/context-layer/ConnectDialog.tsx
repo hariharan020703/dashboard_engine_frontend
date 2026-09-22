@@ -1,13 +1,29 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo, useState } from 'react'
 import type { FormEvent } from 'react'
-import { errorCode, errorMessage } from '@/api/client'
-import { listCompanies } from '@/api/adminApi'
+import { Loader2 } from 'lucide-react'
+import { errorCode, errorMessage } from '@/api/http'
+import { listCompanies } from '@/api/platformApi'
+import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
-import Modal from '@/ui/Modal'
-import { PasswordField, TextField } from '@/ui/fields'
-import { labelCls, primaryButtonCls, selectCls } from '@/ui/styles'
-import { useNotification } from '@/ui/notificationContext'
-import type { Company } from '@/types/admin'
+import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import { PasswordField, TextField } from '@/components/common/Fields'
+import { notify } from '@/components/common/notify'
 import { createConnection } from './api'
 import type { Connector, CreatedConnection } from './types'
 
@@ -34,38 +50,23 @@ export default function ConnectDialog({
   onConnected: (result: CreatedConnection) => void
 }) {
   const { user } = useAuth()
-  const notify = useNotification()
-  const isPlatform = user?.role === 'SUPER_ADMIN'
+  const isPlatform = user?.companyId === null
 
   const [values, setValues] = useState<Record<string, string>>({})
   const [companyId, setCompanyId] = useState('')
-  const [companies, setCompanies] = useState<Company[] | null>(null)
   const [pending, setPending] = useState(false)
   const [failure, setFailure] = useState<{ message: string; retryable: boolean } | null>(null)
 
   /*
    * A platform account has no company of its own, so it has to say which
    * company the connection belongs to — the same rule as creating a user. A
-   * company account never sees this and the backend ignores any companyId it
+   * company account never sees this, and the backend ignores any companyId it
    * might send.
    */
-  useEffect(() => {
-    if (!isPlatform) return
-    let cancelled = false
-    void (async () => {
-      try {
-        const found = await listCompanies()
-        if (!cancelled) setCompanies(found.filter((c) => c.active))
-      } catch (err) {
-        if (cancelled) return
-        setCompanies([])
-        notify.error('Could not load the company list.', errorMessage(err, ''))
-      }
-    })()
-    return () => {
-      cancelled = true
-    }
-  }, [isPlatform, notify])
+  const companies = useAsync(
+    () => (isPlatform ? listCompanies() : Promise.resolve([])),
+    [isPlatform]
+  )
 
   const set = (id: string, value: string) => {
     setValues((current) => ({ ...current, [id]: value }))
@@ -80,9 +81,10 @@ export default function ConnectDialog({
     [connector.credentials, values, isPlatform, companyId]
   )
 
-  const onSubmit = async (e: FormEvent) => {
-    e.preventDefault()
+  const onSubmit = async (event: FormEvent) => {
+    event.preventDefault()
     if (pending || !ready) return
+
     setPending(true)
     setFailure(null)
 
@@ -118,83 +120,101 @@ export default function ConnectDialog({
   }
 
   return (
-    <Modal title={`Connect ${connector.name}`} onClose={onClose} width="max-w-lg">
-      <form onSubmit={onSubmit} className="space-y-4">
-        {isPlatform && (
-          <div>
-            <label className={labelCls} htmlFor="context-company">
-              Company
-            </label>
-            <select
-              id="context-company"
-              className={selectCls}
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              disabled={pending || companies === null}
-            >
-              <option value="">
-                {companies === null ? 'Loading companies…' : 'Choose a company…'}
-              </option>
-              {(companies ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-            <p className="mt-1 text-[12px] text-slate-500">
-              A connection holds a credential for one company's warehouse, so it belongs to that
-              company and nobody outside it can see it.
-            </p>
-          </div>
-        )}
+    <Dialog open onOpenChange={(open) => !open && !pending && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Connect {connector.name}</DialogTitle>
+          <DialogDescription>
+            The token is checked against {connector.name} before anything is saved.
+          </DialogDescription>
+        </DialogHeader>
 
-        {connector.credentials.map((field) =>
-          field.type === 'secret' ? (
-            <PasswordField
-              key={field.id}
-              label={field.label}
-              value={values[field.id] || ''}
-              onChange={(value) => set(field.id, value)}
-              autoComplete="off"
-              disabled={pending}
-              hint={field.help}
-            />
-          ) : (
-            <div key={field.id}>
+        <form onSubmit={onSubmit} className="space-y-4" noValidate>
+          {isPlatform && (
+            <div className="space-y-1.5">
+              <Label htmlFor="context-company" className="text-xs font-medium">
+                Company
+              </Label>
+              <Select
+                value={companyId}
+                onValueChange={setCompanyId}
+                disabled={pending || companies.loading}
+              >
+                <SelectTrigger id="context-company" className="w-full">
+                  <SelectValue
+                    placeholder={companies.loading ? 'Loading companies…' : 'Choose a company…'}
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  {(companies.data ?? [])
+                    .filter((company) => company.active)
+                    .map((company) => (
+                      <SelectItem key={company.id} value={String(company.id)}>
+                        {company.name}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                A connection holds a credential for one company&rsquo;s warehouse, so it belongs to
+                that company and nobody outside it can see it.
+              </p>
+            </div>
+          )}
+
+          {connector.credentials.map((field) =>
+            field.type === 'secret' ? (
+              <PasswordField
+                key={field.id}
+                label={field.label}
+                value={values[field.id] || ''}
+                onChange={(value) => set(field.id, value)}
+                autoComplete="off"
+                disabled={pending}
+                hint={field.help}
+              />
+            ) : (
               <TextField
+                key={field.id}
                 label={field.label}
                 value={values[field.id] || ''}
                 onChange={(value) => set(field.id, value)}
                 disabled={pending}
+                hint={field.help}
+                required
               />
-              {field.help && <p className="mt-1 text-[12px] text-slate-500">{field.help}</p>}
+            )
+          )}
+
+          {failure && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/20 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              {failure.message}
+              {failure.retryable && (
+                <span className="mt-1 block text-xs opacity-80">
+                  Nothing was saved. The address and the token are still as you typed them.
+                </span>
+              )}
             </div>
-          )
-        )}
+          )}
 
-        {failure && (
-          <div
-            role="alert"
-            className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] leading-snug text-red-700"
-          >
-            {failure.message}
-            {failure.retryable && (
-              <span className="mt-1 block text-red-600/80">
-                Nothing was saved. The address and the token are still as you typed them.
-              </span>
-            )}
-          </div>
-        )}
+          <p className="rounded-md bg-muted px-3 py-2 text-xs text-muted-foreground">
+            The token is stored encrypted and never shown again — only its last four characters.
+          </p>
 
-        <p className="rounded-md bg-slate-50 px-3 py-2 text-[12px] leading-snug text-slate-500">
-          The token is checked against {connector.name} before it is stored, and stored encrypted.
-          It is never shown again — only its last four characters.
-        </p>
-
-        <button type="submit" className={primaryButtonCls} disabled={pending || !ready}>
-          {pending ? 'Checking…' : `Validate and connect`}
-        </button>
-      </form>
-    </Modal>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={pending}>
+              Cancel
+            </Button>
+            <Button type="submit" disabled={pending || !ready}>
+              {pending && <Loader2 className="animate-spin" aria-hidden />}
+              {pending ? 'Checking…' : 'Validate and connect'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
   )
 }

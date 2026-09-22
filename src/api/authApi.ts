@@ -1,4 +1,4 @@
-import { apiFetch } from '@/api/client'
+import { get, post } from '@/api/http'
 import type {
   ActivationTarget,
   Profile,
@@ -6,48 +6,54 @@ import type {
   SessionSummary,
 } from '@/types/auth'
 
+/**
+ * Session endpoints.
+ *
+ * `renewOnExpiry: false` on login, activation and password change is load
+ * bearing: a 401 from those means the credentials were wrong, not that a
+ * session expired, and letting the transport treat it as an expiry would fire a
+ * refresh and sign the user out of a session they were trying to start.
+ */
+
 export function login(identifier: string, password: string): Promise<SessionResponse> {
-  return apiFetch<SessionResponse>('/api/auth/login', {
-    method: 'POST',
-    body: { identifier, password },
-    renewOnExpiry: false,
-  })
+  return post<SessionResponse>(
+    '/auth/login',
+    { identifier, password },
+    { renewOnExpiry: false }
+  )
 }
 
 export function logout(): Promise<{ state: 'UNAUTHENTICATED' }> {
-  return apiFetch('/api/auth/logout', { method: 'POST', renewOnExpiry: false })
+  return post<{ state: 'UNAUTHENTICATED' }>('/auth/logout', undefined, { renewOnExpiry: false })
 }
 
 export function fetchProfile(): Promise<Profile> {
-  return apiFetch<Profile>('/api/auth/me')
+  return get<Profile>('/auth/me')
 }
 
 export function fetchSessions(): Promise<SessionSummary[]> {
-  return apiFetch<SessionSummary[]>('/api/auth/sessions')
+  return get<SessionSummary[]>('/auth/sessions')
 }
 
 export function changePassword(
   currentPassword: string,
   newPassword: string
 ): Promise<SessionResponse> {
-  return apiFetch<SessionResponse>('/api/auth/change-password', {
-    method: 'POST',
-    body: { currentPassword, newPassword },
-    renewOnExpiry: false,
-  })
+  return post<SessionResponse>(
+    '/auth/change-password',
+    { currentPassword, newPassword },
+    { renewOnExpiry: false }
+  )
 }
 
 export function fetchActivationTarget(token: string): Promise<ActivationTarget> {
-  return apiFetch<ActivationTarget>(`/api/auth/activation?token=${encodeURIComponent(token)}`, {
+  return get<ActivationTarget>('/auth/activation', {
+    params: { token },
     renewOnExpiry: false,
   })
 }
 
 /** Sets the password on a pending account and signs it in. */
 export function activateAccount(token: string, password: string): Promise<SessionResponse> {
-  return apiFetch<SessionResponse>('/api/auth/activation', {
-    method: 'POST',
-    body: { token, password },
-    renewOnExpiry: false,
-  })
+  return post<SessionResponse>('/auth/activation', { token, password }, { renewOnExpiry: false })
 }

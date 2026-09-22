@@ -143,3 +143,37 @@ export interface AuditLogEntry {
   actorCompanyId: number | null
   [key: string]: unknown
 }
+
+/**
+ * Counts for the platform console's landing page.
+ *
+ * Every field is a COUNT the backend computes over a real table. There is no
+ * placeholder and no estimate: a number the platform cannot source is simply
+ * not in this shape, so the console cannot display one that was invented.
+ */
+export interface PlatformOverview {
+  companies: number
+  companiesActive: number
+  companiesInactive: number
+  users: number
+  usersActive: number
+  usersPending: number
+  companyAdmins: number
+  groups: number
+  assignments: number
+  dashboards: number
+}
+
+/** The same, for one company: the caller's own. */
+export interface WorkspaceOverview {
+  users: number
+  usersActive: number
+  usersPending: number
+  groups: number
+  groupsActive: number
+  /** Dashboards assigned to the company. */
+  dashboards: number
+  /** Of those, how many the caller personally holds a grant on. */
+  dashboardsGranted: number
+  company: Company
+}

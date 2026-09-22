@@ -1,4 +1,4 @@
-import { apiFetch } from '@/api/client'
+import { get, patch, post } from '@/api/http'
 import type {
   HydratedDashboardView,
   CardDefinition,
@@ -6,20 +6,32 @@ import type {
   PreviewResult,
 } from '@/types/dashboard'
 
-function filterQuery(filters: Record<string, string[]>): string {
-  const qs = Object.entries(filters)
-    .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v.join(','))}`)
-    .join('&')
-  return qs ? `?${qs}` : ''
+/**
+ * The dashboard endpoints.
+ *
+ * These are tenant-scoped - a dashboard is reached only if it is assigned to
+ * the caller's company AND the caller holds a grant on it, both checked on the
+ * server before any SQL is planned. The query engine behind them is untouched.
+ */
+
+/**
+ * Slicer selections, as the engine expects them: one query parameter per
+ * filter, values comma-joined. Passed through axios `params` so the encoding is
+ * the transport's job rather than a string built here.
+ */
+function filterParams(filters: Record<string, string[]>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(filters).map(([id, values]) => [id, values.join(',')])
+  )
 }
 
 export function fetchView(
   dashboardId: string,
   filters: Record<string, string[]> = {}
 ): Promise<HydratedDashboardView> {
-  return apiFetch<HydratedDashboardView>(
-    `/api/dashboard/${encodeURIComponent(dashboardId)}${filterQuery(filters)}`
-  )
+  return get<HydratedDashboardView>(`/dashboard/${encodeURIComponent(dashboardId)}`, {
+    params: filterParams(filters),
+  })
 }
 
 /** Replaces one card - KPI or chart, they are the same list - by its position. */
@@ -29,17 +41,16 @@ export function patchCard(
   card: CardDefinition,
   filters: Record<string, string[]>
 ): Promise<HydratedDashboardView> {
-  return apiFetch<HydratedDashboardView>(
-    `/api/dashboard/${encodeURIComponent(dashboardId)}/config`,
-    { method: 'PATCH', body: { index, card, filters } }
-  )
+  return patch<HydratedDashboardView>(`/dashboard/${encodeURIComponent(dashboardId)}/config`, {
+    index,
+    card,
+    filters,
+  })
 }
 
 /** The source table's columns, used by the card editor's field catalogue. */
 export function fetchColumns(dashboardId: string): Promise<ColumnCatalogue> {
-  return apiFetch<ColumnCatalogue>(
-    `/api/dashboard/columns?dashboardId=${encodeURIComponent(dashboardId)}`
-  )
+  return get<ColumnCatalogue>('/dashboard/columns', { params: { dashboardId } })
 }
 
 /**
@@ -51,8 +62,5 @@ export function previewCard(
   card: CardDefinition,
   filters: Record<string, string[]> = {}
 ): Promise<PreviewResult> {
-  return apiFetch<PreviewResult>('/api/dashboard/preview', {
-    method: 'POST',
-    body: { card, filters, dashboardId },
-  })
+  return post<PreviewResult>('/dashboard/preview', { card, filters, dashboardId })
 }

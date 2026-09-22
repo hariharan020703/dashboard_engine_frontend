@@ -3,5 +3,13 @@
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" }
-  ]
+  ],
+  /* Mirrors the "paths" entry in tsconfig.app.json, which is where the app is
+     actually compiled. Declared here as well because tooling that reads the
+     root tsconfig - the shadcn CLI among it - does not follow project
+     references, and would otherwise not resolve @/x to src/x. */
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": { "@/*": ["./src/*"] }
+  }
 }

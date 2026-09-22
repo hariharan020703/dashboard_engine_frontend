@@ -1,34 +1,253 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "shadcn/tailwind.css";
 @import "./modules/data-analyst-agent/theme.css";
 
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * The design system.
+ *
+ * One primary brand colour, five semantic ones, and a neutral ramp - declared
+ * once here as CSS variables and reached everywhere through Tailwind utilities
+ * (bg-primary, text-muted-foreground, border-border). No screen defines its own
+ * palette, so changing the brand is an edit to this file rather than a search
+ * across the pages.
+ *
+ * Light-first: the product is a data tool read in offices and in screen shares,
+ * and light is the contrast the charts were designed against. The dark block
+ * further down keeps the tokens coherent if `.dark` is ever applied, but nothing
+ * in the app sets it today.
+ */
+
 @theme {
+  /* Montserrat is the product's typeface. shadcn's preset ships Geist; this
+     overrides it rather than changing the brand as a side effect of adopting a
+     component library. */
   --font-sans: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-  --font-body: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
 :root {
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.02 258);
+
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 258);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 258);
+
+  /* The one brand colour. Everything interactive and affirmative is this or a
+     tint of it; nothing else competes for attention. */
+  --primary: oklch(0.55 0.22 263);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.97 0.005 258);
+  --secondary-foreground: oklch(0.28 0.02 258);
+  --muted: oklch(0.97 0.005 258);
+  --muted-foreground: oklch(0.55 0.02 258);
+  --accent: oklch(0.96 0.013 263);
+  --accent-foreground: oklch(0.42 0.16 263);
+
+  /* Semantic colours. Status is never carried by colour alone - every badge and
+     toast that uses these also carries an icon and a word (see ui/StatusDot and
+     the notification tones), which is what keeps them readable to someone who
+     cannot separate red from green. */
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+  --success: oklch(0.65 0.16 155);
+  --success-foreground: oklch(0.99 0 0);
+  --warning: oklch(0.75 0.16 70);
+  --warning-foreground: oklch(0.26 0.06 70);
+  --info: oklch(0.6 0.15 240);
+  --info-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.92 0.005 258);
+  --input: oklch(0.92 0.005 258);
+  --ring: oklch(0.55 0.22 263);
+
+  /* Chart series. Distinguishable in order rather than a rainbow: the first two
+     carry most dashboards, so they are the furthest apart in both hue and
+     lightness. */
+  --chart-1: oklch(0.55 0.22 263);
+  --chart-2: oklch(0.7 0.15 195);
+  --chart-3: oklch(0.65 0.16 155);
+  --chart-4: oklch(0.75 0.16 70);
+  --chart-5: oklch(0.62 0.2 340);
+
+  --radius: 0.625rem;
+
+  --sidebar: oklch(1 0 0);
+  --sidebar-foreground: oklch(0.21 0.02 258);
+  --sidebar-primary: oklch(0.55 0.22 263);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.96 0.013 263);
+  --sidebar-accent-foreground: oklch(0.42 0.16 263);
+  --sidebar-border: oklch(0.93 0.005 258);
+  --sidebar-ring: oklch(0.55 0.22 263);
 }
 
-html, body, #root {
-  height: 100%;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+.dark {
+  --background: oklch(0.17 0.015 258);
+  --foreground: oklch(0.97 0.005 258);
+  --card: oklch(0.21 0.017 258);
+  --card-foreground: oklch(0.97 0.005 258);
+  --popover: oklch(0.21 0.017 258);
+  --popover-foreground: oklch(0.97 0.005 258);
+  --primary: oklch(0.65 0.19 263);
+  --primary-foreground: oklch(0.15 0.02 258);
+  --secondary: oklch(0.27 0.02 258);
+  --secondary-foreground: oklch(0.97 0.005 258);
+  --muted: oklch(0.27 0.02 258);
+  --muted-foreground: oklch(0.7 0.015 258);
+  --accent: oklch(0.3 0.04 263);
+  --accent-foreground: oklch(0.9 0.05 263);
+  --destructive: oklch(0.7 0.19 22);
+  --destructive-foreground: oklch(0.15 0.02 258);
+  --success: oklch(0.72 0.15 155);
+  --success-foreground: oklch(0.15 0.02 258);
+  --warning: oklch(0.8 0.15 70);
+  --warning-foreground: oklch(0.2 0.04 70);
+  --info: oklch(0.68 0.14 240);
+  --info-foreground: oklch(0.15 0.02 258);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.65 0.19 263);
+  --sidebar: oklch(0.21 0.017 258);
+  --sidebar-foreground: oklch(0.97 0.005 258);
+  --sidebar-primary: oklch(0.65 0.19 263);
+  --sidebar-primary-foreground: oklch(0.15 0.02 258);
+  --sidebar-accent: oklch(0.3 0.04 263);
+  --sidebar-accent-foreground: oklch(0.9 0.05 263);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.65 0.19 263);
 }
 
-*, ::before, ::after {
-  font-family: 'Montserrat', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+/*
+ * Tokens -> Tailwind utilities. `inline` so a utility compiles to the variable
+ * reference rather than to the value it has here, which is what lets a subtree
+ * (`.agent-workbench`, `.dark`) redefine a token and have every utility inside
+ * it follow.
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-ring: var(--sidebar-ring);
+
+  /* Carried over for the analyst workbench, which styles with them. */
+  --color-link: var(--link, var(--primary));
+  --color-premium: var(--premium, var(--primary));
+  --color-premium-foreground: var(--premium-foreground, var(--primary-foreground));
+  --color-standard: var(--standard, var(--foreground));
+  --color-standard-foreground: var(--standard-foreground, var(--background));
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    /* The app shell scrolls its own panes; the document never does. */
+    overflow: hidden;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+  }
+
+  /*
+   * Focus is never removed, only restyled. Keyboard navigation is the only way
+   * through this application for some people, and an invisible focus ring is
+   * the difference between usable and unusable.
+   */
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
+}
+
+/*
+ * Scrollbars are hidden on the chrome (sidebar, nav rails) but NOT globally:
+ * a data table or a long list with no scrollbar gives no indication there is
+ * more to see. `.scrollbar-none` opts a container in deliberately.
+ */
+.scrollbar-none {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-::-webkit-scrollbar {
+.scrollbar-none::-webkit-scrollbar {
   display: none;
   width: 0;
   height: 0;
 }
 
+/* A thin scrollbar for scrolling panes, so the affordance is there without the
+   platform's full-width bar cutting into the layout. */
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background-color: var(--border);
+  border-radius: 9999px;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
