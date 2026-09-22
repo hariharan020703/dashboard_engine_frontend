@@ -150,7 +150,7 @@ export default function ConnectionDatasetsPage() {
               disabled={saving || !dirty || datasets === null}
               onClick={() => void onSave()}
             >
-              {saving ? 'Saving…' : dirty ? `Save ${chosen.size} selected` : 'Selection saved'}
+              {saving ? 'Processing…' : dirty ? `Save ${chosen.size} selected` : 'Proceed Selected'}
             </button>
           ) : null
         }
