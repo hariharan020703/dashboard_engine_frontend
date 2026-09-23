@@ -38,6 +38,7 @@ export interface AppPaths {
   readonly context: string
   contextConnection(connectionId: string): string
   agent(sessionId?: string): string
+  dataAnalyst(sessionId?: string): string
   readonly playbooks: string
   playbookBuilder(sessionId?: string): string
 
@@ -72,6 +73,10 @@ const PLATFORM: AppPaths = {
   context: '/platform/context',
   contextConnection: (id) => `/platform/context/connections/${encodeURIComponent(id)}`,
   agent: (sessionId) => (sessionId ? `/platform/agent/${encodeURIComponent(sessionId)}` : '/platform/agent'),
+  dataAnalyst: (sessionId) =>
+    sessionId
+      ? `/platform/data-analyst/${encodeURIComponent(sessionId)}`
+      : '/platform/data-analyst',
   playbooks: '/platform/playbooks',
   playbookBuilder: (sessionId) =>
     sessionId ? `/platform/playbook-builder/${encodeURIComponent(sessionId)}` : '/platform/playbook-builder',
@@ -105,6 +110,8 @@ const WORKSPACE: AppPaths = {
   context: '/context',
   contextConnection: (id) => `/context/connections/${encodeURIComponent(id)}`,
   agent: (sessionId) => (sessionId ? `/agent/${encodeURIComponent(sessionId)}` : '/agent'),
+  dataAnalyst: (sessionId) =>
+    sessionId ? `/data-analyst/${encodeURIComponent(sessionId)}` : '/data-analyst',
   playbooks: '/playbooks',
   playbookBuilder: (sessionId) =>
     sessionId ? `/playbook-builder/${encodeURIComponent(sessionId)}` : '/playbook-builder',

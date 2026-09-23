@@ -4,6 +4,7 @@ import { Database, Plug, RefreshCw, Trash2 } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
 import { useAsync } from '@/hooks/useAsync'
+import { createAdkSession } from '@/api/adkAgentApi'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/common/States'
@@ -267,6 +268,17 @@ export default function ContextLayerPage() {
           onClose={() => setConnecting(null)}
           onConnected={(result) => {
             setConnecting(null)
+
+            /*
+             * Fire-and-forget: the connection is already saved, so a session
+             * failure here must not block the redirect to it. The connection's
+             * own id IS the ADK backend's workspace_id — that service has no
+             * workspaces table of its own (see adk_agents/api/main.py).
+             */
+            createAdkSession(result.connection.id, 'context_layer_extractor').catch((err) => {
+              notify.failure('start the context extraction agent for this connection', err)
+            })
+
             // Straight to the picker: the datasets were just fetched, and
             // choosing them is why somebody connected in the first place.
             navigate(paths.contextConnection(result.connection.id))

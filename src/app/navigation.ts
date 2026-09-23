@@ -84,7 +84,7 @@ function platformGroups(paths: AppPaths): NavGroup[] {
       title: 'Intelligence',
       items: [
         { label: 'Context layer', path: paths.context, icon: Layers, permission: 'context.read' },
-        { label: 'Analyst agent', path: paths.agent(), icon: Bot },
+        { label: 'Data analyst', path: paths.dataAnalyst(), icon: Bot },
         { label: 'Playbooks', path: paths.playbooks, icon: BookOpen },
       ],
     },
@@ -122,7 +122,7 @@ function workspaceGroups(paths: AppPaths): NavGroup[] {
       title: 'Intelligence',
       items: [
         { label: 'Context layer', path: paths.context, icon: Layers, permission: 'context.read' },
-        { label: 'Analyst agent', path: paths.agent(), icon: Bot },
+        { label: 'Data analyst', path: paths.dataAnalyst(), icon: Bot },
         { label: 'Playbooks', path: paths.playbooks, icon: BookOpen },
       ],
     },

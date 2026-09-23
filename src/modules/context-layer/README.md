@@ -42,6 +42,19 @@ behind `context.manage`, checked with `can()` rather than by hiding the page.
 that gets copied for Snowflake and then drifts, so adding a provider should not
 mean adding a component.
 
+## After a connection is validated
+
+`ContextLayerPage`'s `onConnected` handler also fires a session-create call
+against the **ADK Agent Runtime API** (`src/api/adkAgentApi.ts`), for the
+`context_layer_extractor` agent, using the new connection's id as
+`workspace_id` — that backend has no workspace concept of its own; a
+connection's id doubles as one (see that service's `db.py`). It is
+fire-and-forget: a failure there is reported through `notify.failure` but
+never blocks the redirect to the dataset picker, since the connection itself
+already saved successfully. The Data Analyst chat (`src/modules/
+data-analyst-agent`, `/data-analyst`) uses the same connection id as its own
+workspace_id, against the `data_analyst` agent.
+
 ## Two things this deliberately does not do
 
 **It does not cache the dataset list.** `ConnectionDatasetsPage` fetches from
