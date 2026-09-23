@@ -30,17 +30,16 @@ export const endpoints = {
   tableProfile: (id: string, tableId: string) =>
     `/context/connections/${enc(id)}/tables/${enc(tableId)}`,
 
-  /* ------------------------------------------------- step 4 — understand --- */
-  understanding: (id: string) => `/context/connections/${enc(id)}/understanding`,
-  generateUnderstanding: (id: string) =>
-    `/context/connections/${enc(id)}/understanding/generate`,
-
-  /* ------------------------------------------------------ step 5 — model --- */
+  /*
+   * ------------------------------------------------------ step 5 — model ---
+   *
+   * Read only. The graph is DERIVED from the facts the extraction run wrote —
+   * `table` rows become nodes, `join` rows become edges — so there is nothing
+   * to generate on demand and no separate relationship resource to write.
+   * Accepting or rejecting a relationship is a review decision on that join
+   * and goes through the review endpoints below.
+   */
   model: (id: string) => `/context/connections/${enc(id)}/model`,
-  generateModel: (id: string) => `/context/connections/${enc(id)}/model/generate`,
-  relationships: (id: string) => `/context/connections/${enc(id)}/model/relationships`,
-  relationship: (id: string, relationshipId: string) =>
-    `/context/connections/${enc(id)}/model/relationships/${enc(relationshipId)}`,
 
   /* ----------------------------------------------------- step 6 — review --- */
   reviewQueue: (id: string) => `/context/connections/${enc(id)}/review`,
@@ -70,8 +69,8 @@ export const STEP_ENDPOINT_LIVE: Record<WorkflowStepId, boolean> = {
   connect: true,
   discover: true,
   profile: true,
-  understand: false,
-  model: false,
-  review: false,
-  publish: false,
+  understand: true,
+  model: true,
+  review: true,
+  publish: true,
 }

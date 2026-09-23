@@ -6,22 +6,22 @@ import type {
   Connection,
   Connector,
   CreatedConnection,
-  ModelEdge,
   ModelGraph,
   ProfileOverview,
   PublishResult,
   PublishSummary,
+  PublishedVersion,
   PublishValidation,
-  RelationshipInput,
   ReviewItem,
   ReviewItemUpdate,
   ReviewQueue,
   SelectedDataset,
   TableProfile,
-  Understanding,
   WarehouseDataset,
   DatasetListing,
 } from '../types'
+import type { ExtractionResult } from '../api/extractionApi'
+import type { ContextObjects } from '../api/contextObjectsApi'
 
 /**
  * Every server read and write the Context Layer performs.
@@ -178,7 +178,7 @@ export function useSaveSelection(connectionId: string | null) {
       if (connectionId) {
         qc.invalidateQueries({ queryKey: contextKeys.datasetsAll(connectionId) })
         qc.invalidateQueries({ queryKey: contextKeys.profile(connectionId) })
-        qc.invalidateQueries({ queryKey: contextKeys.understanding(connectionId) })
+        qc.invalidateQueries({ queryKey: contextKeys.extraction(connectionId) })
         qc.invalidateQueries({ queryKey: contextKeys.model(connectionId) })
         qc.invalidateQueries({ queryKey: contextKeys.review(connectionId) })
         qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId) })
@@ -217,31 +217,74 @@ export function useTableProfile(connectionId: string | null, tableId: string | n
 
 /* ------------------------------------------------- step 4 — understand --- */
 
-export function useUnderstanding(connectionId: string | null, enabled = true) {
-  return useQuery<Understanding>({
-    queryKey: contextKeys.understanding(connectionId ?? ''),
-    queryFn: () => contextApi.understanding.fetchUnderstanding(connectionId!),
+/**
+ * The extraction run, against the Context Layer service rather than the Node API.
+ *
+ * Started from Profile's "Analyse with AI" and displayed in Understand, which
+ * is why it lives here rather than inside either step: it is one piece of
+ * server state two steps share, and the query cache is where this module keeps
+ * those.
+ */
+export function useExtraction(connectionId: string | null, enabled = true) {
+  return useQuery<ExtractionResult | null>({
+    queryKey: contextKeys.extraction(connectionId ?? ''),
+    queryFn: () => contextApi.extraction.fetchLatestExtraction(connectionId!),
     enabled: Boolean(connectionId) && enabled,
     /*
-     * While a run is in flight the backend reports `generating`; poll until it
-     * settles. Returning false rather than a number stops the timer, so a ready
-     * or failed result is not re-fetched every few seconds forever.
+     * A finished run does not change on its own, and re-reading a transcript
+     * on every visit to the step is a round trip for an answer that cannot
+     * have moved. A new run replaces it through the mutation below.
      */
-    refetchInterval: (query) =>
-      query.state.data?.status === 'generating' ? 4000 : false,
-    ...proposedQueryOptions<Understanding>(),
+    staleTime: 5 * 60_000,
+    // The service is only reachable when it is running locally; a retry storm
+    // against a service that is simply not up helps nobody.
+    retry: false,
   })
 }
 
-export function useGenerateUnderstanding(connectionId: string | null) {
+/**
+ * Runs the extraction: creates a session, then sends the datasets to it.
+ *
+ * `stream: false` means the request stays open for the whole run - minutes,
+ * not seconds - so the caller shows progress rather than waiting silently.
+ * The result is written straight into the cache, so Understand has it the
+ * moment the step opens rather than re-reading the transcript it just caused.
+ */
+export function useRunExtraction(connectionId: string | null) {
   const qc = useQueryClient()
-  return useMutation<Understanding, unknown, void>({
-    mutationFn: () => contextApi.understanding.generateUnderstanding(connectionId!),
-    onSuccess: (data) => {
-      // Seed with the run's initial state so the poller above takes over
-      // immediately rather than after the next refetch.
-      qc.setQueryData(contextKeys.understanding(connectionId ?? ''), data)
+  return useMutation<ExtractionResult, unknown, { datasetIds: string[]; domain?: string }>({
+    mutationFn: ({ datasetIds, domain }) =>
+      contextApi.extraction.runExtraction(connectionId!, datasetIds, { domain }),
+    onSuccess: (result) => {
+      qc.setQueryData(contextKeys.extraction(connectionId ?? ''), result)
+      /*
+       * A run's whole purpose is to write context_objects rows, so the facts
+       * are stale the moment it finishes. Invalidated rather than seeded: the
+       * response carries the agent's report, not the rows it wrote, and those
+       * have to be read back from the store.
+       */
+      qc.invalidateQueries({ queryKey: contextKeys.contextObjects(connectionId ?? '') })
     },
+  })
+}
+
+/**
+ * The facts the latest run wrote.
+ *
+ * This is the real output of step 4 — the agent's prose is a report about the
+ * run, these rows are what it did. Read from the Context Layer store rather
+ * than parsed out of that prose, so the screen shows what was actually
+ * recorded rather than what the agent said it recorded.
+ */
+export function useContextObjects(connectionId: string | null, enabled = true) {
+  return useQuery<ContextObjects>({
+    queryKey: contextKeys.contextObjects(connectionId ?? ''),
+    queryFn: () => contextApi.contextObjects.fetchContextObjects(connectionId!),
+    enabled: Boolean(connectionId) && enabled,
+    staleTime: 60_000,
+    // Only reachable when that service is running; a retry storm against one
+    // that simply is not up helps nobody.
+    retry: false,
   })
 }
 
@@ -258,48 +301,27 @@ export function useModel(connectionId: string | null, enabled = true) {
   })
 }
 
-export function useGenerateModel(connectionId: string | null) {
+/**
+ * Accepts or rejects a relationship.
+ *
+ * One mutation where there used to be four. The graph is derived from the
+ * extraction's `join` rows, so there is nothing to create, nothing to generate
+ * and nothing to delete — deciding about a join IS a review decision on that
+ * row, and routing it through the same endpoint means one `verified` flag
+ * rather than two mechanisms that can disagree about whether a join is trusted.
+ *
+ * Invalidates the review queue too: the same row is an item there, and leaving
+ * it stale is how the canvas and the queue end up showing different states for
+ * one fact.
+ */
+export function useDecideRelationship(connectionId: string | null) {
   const qc = useQueryClient()
-  return useMutation<ModelGraph, unknown, void>({
-    mutationFn: () => contextApi.model.generateModel(connectionId!),
-    onSuccess: (data) => qc.setQueryData(contextKeys.model(connectionId ?? ''), data),
-  })
-}
-
-export function useUpdateRelationship(connectionId: string | null) {
-  const qc = useQueryClient()
-  return useMutation<
-    ModelEdge,
-    unknown,
-    { id: string; body: Partial<RelationshipInput> & { status?: ModelEdge['status'] } }
-  >({
-    mutationFn: ({ id, body }) =>
-      contextApi.model.updateRelationship(connectionId!, id, body),
+  return useMutation<unknown, unknown, { id: string; status: 'accepted' | 'rejected' }>({
+    mutationFn: ({ id, status }) =>
+      contextApi.model.decideRelationship(connectionId!, id, status),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: contextKeys.model(connectionId ?? '') })
-      // Accepting a relationship changes what would be published.
-      qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
-    },
-  })
-}
-
-export function useCreateRelationship(connectionId: string | null) {
-  const qc = useQueryClient()
-  return useMutation<ModelEdge, unknown, RelationshipInput>({
-    mutationFn: (body) => contextApi.model.createRelationship(connectionId!, body),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: contextKeys.model(connectionId ?? '') })
-      qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
-    },
-  })
-}
-
-export function useDeleteRelationship(connectionId: string | null) {
-  const qc = useQueryClient()
-  return useMutation<{ deleted: true }, unknown, string>({
-    mutationFn: (id) => contextApi.model.deleteRelationship(connectionId!, id),
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: contextKeys.model(connectionId ?? '') })
+      qc.invalidateQueries({ queryKey: contextKeys.review(connectionId ?? '') })
       qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
     },
   })
@@ -405,10 +427,19 @@ export function useValidatePublish(connectionId: string | null) {
 
 export function usePublish(connectionId: string | null) {
   const qc = useQueryClient()
-  return useMutation<PublishResult, unknown, { notifyTeam?: boolean } | void>({
-    mutationFn: (body) =>
-      contextApi.publish.publishContext(connectionId!, body ?? undefined),
+  return useMutation<PublishResult, unknown, { name: string; notifyTeam?: boolean }>({
+    mutationFn: (body) => contextApi.publish.publishContext(connectionId!, body),
     // Publishing changes what every later read reports about this connection.
     onSuccess: () => qc.invalidateQueries({ queryKey: contextKeys.all }),
+  })
+}
+
+/** Every version published under this connection, newest first. */
+export function usePublications(connectionId: string | null, enabled = true) {
+  return useQuery<PublishedVersion[]>({
+    queryKey: [...contextKeys.publish(connectionId ?? ''), 'versions'],
+    queryFn: () => contextApi.publish.listPublications(connectionId!),
+    enabled: Boolean(connectionId) && enabled,
+    ...proposedQueryOptions<PublishedVersion[]>(),
   })
 }

@@ -1,69 +1,48 @@
 import { contextHttp } from './client'
 import { endpoints } from './endpoints'
-import type { ModelEdge, ModelGraph, RelationshipInput } from '../types'
+import type { ModelEdge, ModelGraph } from '../types'
+import { decideReviewItem } from './reviewApi'
 
 /**
- * Step 5 — Model. PROPOSED: these routes are not built yet.
+ * Step 5 — Model. LIVE.
  *
- * Relationship detection is the backend's: it has the profiles, the key
- * metadata and the AI. What comes back is a plain graph — `nodes` and `edges`
- * — and the frontend's whole job is to draw it and let somebody argue with it.
+ * Read only, and derived rather than stored. The backend builds this graph
+ * from the facts the extraction run already wrote: `table` rows become nodes,
+ * their `column_stats` rows become those nodes' columns, and `join` rows
+ * become edges carrying the join keys, cardinality and confidence the agent
+ * recorded.
  *
- * No node, edge, join condition or confidence value is authored here. The
- * canvas renders however many tables the backend sends, which is why it uses a
- * real graph library with automatic layout rather than positions chosen to
- * suit a particular example.
+ * So there is no "detect relationships" call here. Detection happened in step
+ * 4; this step shows what it found. Re-running it means running the extraction
+ * again, which is Understand's button, not this one's.
  *
- * `position` on a node is optional and round-trips: absent means "lay this out
- * for me", present means somebody moved it and the layout should be kept.
+ * Accepting or rejecting a relationship is a REVIEW DECISION on that join row,
+ * not a separate relationship resource. One decision, one place it is
+ * recorded, one `verified` flag the analyst agent later filters on — rather
+ * than two mechanisms that can disagree about whether a join is trusted.
  */
 
 export function fetchModel(connectionId: string): Promise<ModelGraph> {
   return contextHttp.get<ModelGraph>(endpoints.model(connectionId))
 }
 
-/** Asks for a fresh detection run. Same shape as the read, so it can seed the cache. */
-export function generateModel(connectionId: string): Promise<ModelGraph> {
-  return contextHttp.post<ModelGraph>(endpoints.generateModel(connectionId))
-}
-
-export function createRelationship(
-  connectionId: string,
-  body: RelationshipInput
-): Promise<ModelEdge> {
-  return contextHttp.post<ModelEdge>(endpoints.relationships(connectionId), body)
-}
-
 /**
- * Accepting or rejecting an AI suggestion is an update to `status`, not a
- * delete — a rejected suggestion has to stay rejected, or the next detection
- * run proposes it again and somebody dismisses the same thing twice.
+ * Accepts or rejects a relationship.
+ *
+ * `edge.id` is the `context_objects` row id of the join, which is exactly what
+ * the review endpoints key on — so this is the same call the Review step makes
+ * on the same row, reached from the canvas instead of from the queue.
  */
-export function updateRelationship(
+export function decideRelationship(
   connectionId: string,
   relationshipId: string,
-  body: Partial<RelationshipInput> & { status?: ModelEdge['status'] }
-): Promise<ModelEdge> {
-  return contextHttp.patch<ModelEdge>(
-    endpoints.relationship(connectionId, relationshipId),
-    body
+  status: 'accepted' | 'rejected'
+): Promise<unknown> {
+  return decideReviewItem(
+    connectionId,
+    relationshipId,
+    status === 'accepted' ? 'approve' : 'reject'
   )
 }
 
-/** For a relationship somebody added by hand and wants gone entirely. */
-export function deleteRelationship(
-  connectionId: string,
-  relationshipId: string
-): Promise<{ deleted: true }> {
-  return contextHttp.delete<{ deleted: true }>(
-    endpoints.relationship(connectionId, relationshipId)
-  )
-}
-
-/** Persists a canvas layout. Positions are the one thing the frontend authors. */
-export function saveLayout(
-  connectionId: string,
-  positions: Array<{ id: string; position: { x: number; y: number } }>
-): Promise<{ saved: true }> {
-  return contextHttp.put<{ saved: true }>(endpoints.model(connectionId), { positions })
-}
+export type { ModelEdge }

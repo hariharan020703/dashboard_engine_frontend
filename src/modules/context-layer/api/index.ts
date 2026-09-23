@@ -1,10 +1,11 @@
 import * as connections from './connectionApi'
 import * as datasets from './datasetApi'
 import * as profile from './profileApi'
-import * as understanding from './understandingApi'
 import * as model from './modelApi'
 import * as review from './reviewApi'
 import * as publish from './publishApi'
+import * as extraction from './extractionApi'
+import * as contextObjects from './contextObjectsApi'
 
 /**
  * The Context Layer's API surface, one namespace per step.
@@ -22,18 +23,20 @@ export const contextApi = {
   connections,
   datasets,
   profile,
-  understanding,
   model,
   review,
   publish,
+  extraction,
+  contextObjects,
 } as const
 
 export * from './connectionApi'
 export * from './datasetApi'
 export * from './profileApi'
-export * from './understandingApi'
 export * from './modelApi'
 export * from './reviewApi'
 export * from './publishApi'
+export * from './extractionApi'
+export * from './contextObjectsApi'
 export { isEndpointMissing, ApiError } from './client'
 export { endpoints, STEP_ENDPOINT_LIVE } from './endpoints'

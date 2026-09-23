@@ -1,6 +1,22 @@
 import { useState } from 'react'
-import { AlertCircle, CheckCircle2, Loader2, ShieldCheck } from 'lucide-react'
+import type { ReactNode } from 'react'
+import {
+  AlertCircle,
+  ArrowRight,
+  CheckCircle2,
+  ExternalLink,
+  Loader2,
+  ShieldCheck,
+} from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorMessage } from '@/api/http'
@@ -14,7 +30,7 @@ import { DEFAULT_DATASET_LIMIT } from '../../config'
 import { useCreateConnection } from '../../queries/hooks'
 
 /**
- * The credential form, rendered from the connector's own field list.
+ * The credential dialog, rendered from the connector's own field list.
  *
  * The backend describes the form (`connector.credentials`), so adding a
  * provider needs no second dialog that can drift from this one, and the two
@@ -119,150 +135,266 @@ export function ConnectionForm({
     }
   }
 
+  /** Fields are read-only once a credential has been accepted, and while checking. */
+  const locked = phase === 'validating' || phase === 'connected'
+
+  /*
+   * A dialog rather than a panel below the gallery.
+   *
+   * Inline, the form sat under a grid of other connectors that all still
+   * looked clickable, so the thing being configured was whichever tile you
+   * last pressed — stated only by a highlight some distance above the fields.
+   * A modal names it in the title and takes the choice off the table.
+   *
+   * One field per row, with generous gutters. The alternative — pairing the
+   * short fields two to a row — fitted more into less height, but it made the
+   * form read as a grid to be scanned rather than a sequence to be worked
+   * through.
+   *
+   * Padding is ONE knob: `p-6` on the dialog. The header, body and footer
+   * carry no horizontal padding of their own, so changing that single value
+   * moves everything together. An earlier version tinted the header and footer
+   * edge to edge, which looked good but forced the dialog to `p-0` and pushed
+   * every gutter into three places that then had to agree.
+   *
+   * Dismissal is routed through `onCancel` rather than handled internally, so
+   * Escape, the close button and the overlay all do exactly what Cancel does —
+   * including clearing the chosen connector in the step above.
+   */
   return (
-    <div className="rounded-lg border bg-card">
-      <header className="flex items-center gap-3 border-b px-4 py-3">
-        <span
-          className={cn('flex size-8 items-center justify-center rounded-md', presentation.accentClass)}
-        >
-          <presentation.icon className="size-4" aria-hidden />
-        </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium">{connector.name} connection</p>
-          <p className="truncate text-xs text-muted-foreground">{connector.description}</p>
-        </div>
-        {connector.docsUrl ? (
-          <a
-            href={connector.docsUrl}
-            target="_blank"
-            rel="noreferrer noopener"
-            className="text-xs text-primary underline-offset-4 hover:underline"
-          >
-            Where do I find this?
-          </a>
-        ) : null}
-      </header>
-
-      <div className="space-y-4 p-4">
-        {isPlatform ? (
-          <div className="space-y-1.5">
-            <Label htmlFor="cred-company">Company</Label>
-            <select
-              id="cred-company"
-              value={companyId}
-              onChange={(e) => setCompanyId(e.target.value)}
-              disabled={phase === 'validating' || phase === 'connected'}
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs outline-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              <option value="">Select a company…</option>
-              {(companies.data ?? []).map((company) => (
-                <option key={company.id} value={String(company.id)}>
-                  {company.name}
-                </option>
-              ))}
-            </select>
-            <p className="text-xs text-muted-foreground">
-              A connection belongs to one company. Platform accounts have none of their own, so
-              this has to be stated.
-            </p>
-          </div>
-        ) : null}
-
-        {fields.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            This connector declares no credential fields. That is a backend configuration
-            problem — a provider marked available must describe its own form.
-          </p>
-        ) : (
-          fields.map((field) => (
-            <div key={field.id} className="space-y-1.5">
-              <Label htmlFor={`cred-${field.id}`}>
-                {field.id === 'host' ? field.label || presentation.hostLabel : field.label}
-              </Label>
-              <Input
-                id={`cred-${field.id}`}
-                type={field.type === 'secret' ? 'password' : 'text'}
-                value={values[field.id] ?? ''}
-                placeholder={field.placeholder}
-                onChange={(e) => setValue(field.id, e.target.value)}
-                autoComplete={field.type === 'secret' ? 'off' : undefined}
-                // Keeps a credential out of password managers and out of the
-                // browser's own form history.
-                {...(field.type === 'secret'
-                  ? { spellCheck: false, 'data-1p-ignore': true, 'data-lpignore': 'true' }
-                  : {})}
-                disabled={phase === 'validating' || phase === 'connected'}
-              />
-              {field.help ? (
-                <p className="text-xs text-muted-foreground">{field.help}</p>
-              ) : null}
-            </div>
-          ))
-        )}
-
-        {phase === 'connected' && result ? (
-          <div className="flex items-start gap-2.5 rounded-md border border-emerald-300 bg-emerald-50 p-3 text-sm dark:border-emerald-900 dark:bg-emerald-950/40">
-            <CheckCircle2
-              className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
-              aria-hidden
-            />
-            <div className="min-w-0">
-              <p className="font-medium text-emerald-800 dark:text-emerald-200">
-                Connection successful
-              </p>
-              <p className="mt-0.5 text-emerald-700 dark:text-emerald-300">
-                Connected to {result.connection.host}
-                {result.account.accountName ? ` as ${result.account.accountName}` : ''}.
-              </p>
-              <p className="mt-1 text-xs text-emerald-700/80 dark:text-emerald-300/80">
-                The token is stored encrypted by the backend and is not shown again.
-              </p>
-            </div>
-          </div>
-        ) : null}
-
-        {phase === 'failed' && failure ? (
-          <div
-            role="alert"
-            className="flex items-start gap-2.5 rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm"
-          >
-            <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
-            <div className="min-w-0">
-              <p className="font-medium text-destructive">Connection failed</p>
-              <p className="mt-0.5 text-muted-foreground">{failure}</p>
-            </div>
-          </div>
-        ) : null}
-
-        <p className="flex items-start gap-2 text-xs text-muted-foreground">
-          <ShieldCheck className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          Credentials are sent once to the backend, which validates and encrypts them. This
-          application never stores the token in the browser.
-        </p>
-      </div>
-
-      <footer className="flex items-center justify-between gap-3 border-t px-4 py-3">
-        <Button variant="ghost" size="sm" onClick={onCancel}>
-          Cancel
-        </Button>
-
-        {phase === 'connected' && result ? (
-          <Button size="sm" onClick={() => onConnected(result)}>
-            Continue
-          </Button>
-        ) : (
-          <Button size="sm" onClick={submit} disabled={!canSubmit}>
-            {phase === 'validating' ? (
-              <>
-                <Loader2 className="size-4 animate-spin" aria-hidden />
-                Validating…
-              </>
-            ) : (
-              'Test connection'
+    <Dialog open onOpenChange={(open) => !open && onCancel()}>
+      <DialogContent className="gap-0 overflow-hidden p-6 sm:max-w-lg">
+        {/* pr-8 keeps the title clear of the dialog's own close button. */}
+        <DialogHeader className="flex-row items-center gap-3.5 space-0 text-left">
+          <span
+            className={cn(
+              'flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ring-black/5 dark:ring-white/10',
+              presentation.accentClass
             )}
-          </Button>
-        )}
-      </footer>
+          >
+            <presentation.icon className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <DialogTitle className="text-base font-semibold leading-tight">
+              Connect {connector.name}
+            </DialogTitle>
+            <DialogDescription className="mt-1 line-clamp-1 text-xs leading-relaxed">
+              {connector.description}
+            </DialogDescription>
+          </div>
+        </DialogHeader>
+
+        {/*
+          The body, and the one place a scrollbar may ever appear.
+
+          Stacked with this much air the form runs to roughly 580px, which fits
+          any normal window without one. But `overflow-hidden` on the dialog
+          clips rather than scrolls, so on a short viewport — a laptop with the
+          console open, or a 768px screen with an error banner showing — the
+          footer would be cut off and the Connect button unreachable. Bounding
+          the body instead keeps the header and footer always visible: no
+          scrollbar in practice, and a reachable button when there would
+          otherwise be none.
+
+          `py-6` here is the gap to the header above and the footer below; the
+          side gutters come from the dialog's own padding.
+        */}
+        <div className="max-h-[calc(100vh-15rem)] space-y-6 overflow-y-auto py-6">
+          {isPlatform ? (
+            <Field
+              id="cred-company"
+              label="Company"
+              help="A connection belongs to one company. Platform accounts have none of their own."
+            >
+              <select
+                id="cred-company"
+                value={companyId}
+                onChange={(e) => setCompanyId(e.target.value)}
+                disabled={locked}
+                className="flex h-10 w-full rounded-md border border-input bg-transparent px-3 text-sm shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <option value="">Select a company…</option>
+                {(companies.data ?? []).map((company) => (
+                  <option key={company.id} value={String(company.id)}>
+                    {company.name}
+                  </option>
+                ))}
+              </select>
+            </Field>
+          ) : null}
+
+          {fields.length === 0 ? (
+            <p className="rounded-lg border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
+              This connector declares no credential fields. That is a backend configuration
+              problem — a provider marked available must describe its own form.
+            </p>
+          ) : (
+            /*
+             * One field per row, in the order the connector declares them.
+             *
+             * Pairing the short ones two to a row fitted more into less height,
+             * but it made the form read as a grid to be scanned rather than a
+             * sequence to be worked through — and the order a provider declares
+             * its credentials in is usually the order they are gathered.
+             */
+            <div className="space-y-6">
+              {fields.map((field) => (
+                <Field
+                  key={field.id}
+                  id={`cred-${field.id}`}
+                  label={
+                    field.id === 'host' ? field.label || presentation.hostLabel : field.label
+                  }
+                  help={field.help}
+                  /* The docs link belongs beside the credential it explains. */
+                  action={
+                    field.type === 'secret' && connector.docsUrl ? (
+                      <a
+                        href={connector.docsUrl}
+                        target="_blank"
+                        rel="noreferrer noopener"
+                        className="inline-flex items-center gap-1 text-xs text-primary underline-offset-4 hover:underline"
+                      >
+                        Where do I find this?
+                        <ExternalLink className="size-3" aria-hidden />
+                      </a>
+                    ) : null
+                  }
+                >
+                  <Input
+                    id={`cred-${field.id}`}
+                    type={field.type === 'secret' ? 'password' : 'text'}
+                    value={values[field.id] ?? ''}
+                    placeholder={field.placeholder}
+                    onChange={(e) => setValue(field.id, e.target.value)}
+                    autoComplete={field.type === 'secret' ? 'off' : undefined}
+                    // Keeps a credential out of password managers and out of the
+                    // browser's own form history.
+                    {...(field.type === 'secret'
+                      ? {
+                          spellCheck: false,
+                          'data-1p-ignore': true,
+                          'data-lpignore': 'true',
+                          className: 'h-10 font-mono tracking-wide',
+                        }
+                      : { className: 'h-10' })}
+                    disabled={locked}
+                  />
+                </Field>
+              ))}
+            </div>
+          )}
+
+          {phase === 'connected' && result ? (
+            <div className="flex items-start gap-3 rounded-lg border border-emerald-300 bg-emerald-50 px-3.5 py-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+              <CheckCircle2
+                className="mt-0.5 size-4 shrink-0 text-emerald-600 dark:text-emerald-400"
+                aria-hidden
+              />
+              <div className="min-w-0 space-y-0.5 text-sm">
+                <p className="font-medium text-emerald-800 dark:text-emerald-200">
+                  Connection successful
+                </p>
+                <p className="truncate text-emerald-700 dark:text-emerald-300">
+                  {result.connection.host}
+                  {result.account.accountName ? ` · ${result.account.accountName}` : ''}
+                </p>
+                <p className="text-xs text-emerald-700/80 dark:text-emerald-300/80">
+                  The token is stored encrypted and is not shown again.
+                </p>
+              </div>
+            </div>
+          ) : null}
+
+          {phase === 'failed' && failure ? (
+            <div
+              role="alert"
+              className="flex items-start gap-3 rounded-lg border border-destructive/40 bg-destructive/5 px-3.5 py-3"
+            >
+              <AlertCircle className="mt-0.5 size-4 shrink-0 text-destructive" aria-hidden />
+              <div className="min-w-0 space-y-0.5 text-sm">
+                <p className="font-medium text-destructive">Connection failed</p>
+                <p className="text-muted-foreground">{failure}</p>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <DialogFooter className="flex-row items-center gap-3 border-t pt-4 sm:justify-between">
+          {/*
+            The security note sits in the footer rather than above the buttons:
+            it is reassurance, not an instruction, and it was taking a full row
+            of height in the middle of the form to say so. Hidden on a narrow
+            screen, where that row is the difference between fitting and not.
+          */}
+          <p className="hidden items-center gap-1.5 text-xs text-muted-foreground sm:flex">
+            <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+            Sent once, encrypted by the backend, never stored in the browser.
+          </p>
+
+          <div className="ml-auto flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={onCancel}>
+              Cancel
+            </Button>
+
+            {phase === 'connected' && result ? (
+              <Button size="sm" onClick={() => onConnected(result)}>
+                Continue
+                <ArrowRight className="size-4" aria-hidden />
+              </Button>
+            ) : (
+              <Button size="sm" onClick={submit} disabled={!canSubmit}>
+                {phase === 'validating' ? (
+                  <>
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                    Validating…
+                  </>
+                ) : (
+                  'Connect'
+                )}
+              </Button>
+            )}
+          </div>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+/**
+ * One labelled field, with its help text and an optional action beside the label.
+ *
+ * Collected into a component so every field has identical spacing and the same
+ * relationship between label, control and help — which is most of what makes a
+ * form of mixed field types read as deliberate rather than assembled.
+ */
+function Field({
+  id,
+  label,
+  help,
+  action,
+  className,
+  children,
+}: {
+  id: string
+  label: string
+  help?: string
+  action?: ReactNode
+  className?: string
+  children: ReactNode
+}) {
+  return (
+    <div className={cn('space-y-2', className)}>
+      <div className="flex items-baseline justify-between gap-3">
+        <Label htmlFor={id} className="text-sm font-medium">
+          {label}
+        </Label>
+        {action}
+      </div>
+      {children}
+      {help ? (
+        <p className="text-xs leading-relaxed text-muted-foreground">{help}</p>
+      ) : null}
     </div>
   )
 }

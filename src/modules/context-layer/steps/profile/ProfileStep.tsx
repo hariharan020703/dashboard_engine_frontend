@@ -23,8 +23,9 @@ import {
 } from '../../components/format'
 import { endpoints, isEndpointMissing } from '../../api'
 import {
-  useGenerateUnderstanding,
+  useConnection,
   useProfileOverview,
+  useRunExtraction,
   useTableProfile,
 } from '../../queries/hooks'
 import { useWorkflow } from '../../state/workflowContext'
@@ -40,7 +41,22 @@ import type { ColumnProfile, SampleRecords } from '../../types'
 export function ProfileStep() {
   const { connectionId, activeTableId, setActiveTableId, goToStep } = useWorkflow()
   const overview = useProfileOverview(connectionId)
-  const generateUnderstanding = useGenerateUnderstanding(connectionId)
+  const connection = useConnection(connectionId)
+  const runExtraction = useRunExtraction(connectionId)
+
+  /*
+   * The datasets to extract from: the SAVED selection, not the draft.
+   *
+   * Discover writes the selection to the server before it lets you leave, so
+   * by the time this step runs the two agree — and if they ever did not, the
+   * saved set is the one the profile above was built from and the one the
+   * service can resolve. Sending a draft would ask the agent to onboard
+   * something nobody committed to.
+   */
+  const datasetIds = useMemo(
+    () => (connection.data?.selectedDatasets ?? []).map((d) => d.id),
+    [connection.data]
+  )
 
   // Select the first table automatically, so the pane is never pointlessly empty.
   const firstTableId = useMemo(
@@ -64,14 +80,29 @@ export function ProfileStep() {
       title="Profile tables and schema"
       description="Structure and statistics for the datasets you selected, read from the source by the backend."
       nextLabel="Analyse with AI"
-      nextPending={generateUnderstanding.isPending}
+      nextPending={runExtraction.isPending}
+      nextDisabled={datasetIds.length === 0}
+      /*
+       * This button is the one place the workflow leaves the Node API.
+       *
+       * It creates a session with the context_layer_extractor agent and sends
+       * it the selected dataset ids; the Context Layer service builds the
+       * extraction prompt from them. The run is synchronous - `stream: false`
+       * holds the request open until the agent is done, which is minutes - so
+       * the step stays put and shows progress rather than moving on to an
+       * empty screen.
+       *
+       * Returning false on failure keeps somebody on Profile with their
+       * selection intact, instead of advancing to a step that has nothing to
+       * show and no way back to the thing that failed.
+       */
       onNext={async () => {
         try {
-          await generateUnderstanding.mutateAsync()
+          await runExtraction.mutateAsync({ datasetIds })
+          return true
         } catch (err) {
-          if (!isEndpointMissing(err)) {
-            notify.failure('start the AI analysis', err)
-          }
+          notify.failure('run the context extraction', err)
+          return false
         }
       }}
       footerNote={

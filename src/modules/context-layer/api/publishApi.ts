@@ -1,9 +1,14 @@
 import { contextHttp } from './client'
 import { endpoints } from './endpoints'
-import type { PublishResult, PublishSummary, PublishValidation } from '../types'
+import type {
+  PublishResult,
+  PublishSummary,
+  PublishValidation,
+  PublishedVersion,
+} from '../types'
 
 /**
- * Step 7 — Publish. PROPOSED: these routes are not built yet.
+ * Step 7 — Publish. LIVE.
  *
  * The counts on this screen are read from the backend, not tallied from
  * whatever the UI happens to be holding. That is the whole point of the step:
@@ -33,7 +38,12 @@ export function validatePublish(connectionId: string): Promise<PublishValidation
  */
 export function publishContext(
   connectionId: string,
-  body?: { notifyTeam?: boolean }
+  body: { name: string; notifyTeam?: boolean }
 ): Promise<PublishResult> {
-  return contextHttp.post<PublishResult>(endpoints.publish(connectionId), body ?? {})
+  return contextHttp.post<PublishResult>(endpoints.publish(connectionId), body)
+}
+
+/** Every version published under this connection, newest first. */
+export function listPublications(connectionId: string): Promise<PublishedVersion[]> {
+  return contextHttp.get<PublishedVersion[]>(endpoints.publish(connectionId))
 }

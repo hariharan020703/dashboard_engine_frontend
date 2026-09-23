@@ -1,5 +1,15 @@
-import { useEffect, useDeferredValue, useMemo, useState } from 'react'
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Info, RefreshCw, Search } from 'lucide-react'
+import { useDeferredValue, useMemo, useState } from 'react'
+import {
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Info,
+  RefreshCw,
+  Search,
+} from 'lucide-react'
+import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -168,11 +178,45 @@ export function DiscoverStep() {
    * other with an effect would mean a background refetch could land mid-edit
    * and revert a half-made choice; deriving it cannot.
    */
-  const savedIds = useMemo(
-    () => (connection.data?.selectedDatasets ?? []).map((d) => d.id),
+  const saved = useMemo(
+    () => connection.data?.selectedDatasets ?? [],
     [connection.data]
   )
+  const savedIds = useMemo(() => saved.map((d) => d.id), [saved])
   const selection = selectedDatasetIds ?? savedIds
+
+  /**
+   * The rows to show: what the warehouse just listed, plus anything already
+   * configured that the listing did not reach.
+   *
+   * Without the second half this screen lies by omission, and then acts on the
+   * lie. The listing is capped, so a dataset configured months ago can easily
+   * sit outside the current page — it would render nowhere, look unconfigured,
+   * and the save below (which REPLACES the whole selection) would drop it. The
+   * symptom is a context quietly losing datasets nobody unticked.
+   *
+   * The stand-in rows carry only what the server actually stored at selection
+   * time: id, name and the two counts. Description, owner and the rest are
+   * null, because this application never saw them for these rows.
+   */
+  const rows = useMemo<WarehouseDataset[]>(() => {
+    const listed = datasets.data?.datasets ?? []
+    const listedIds = new Set(listed.map((d) => d.id))
+    const offPage: WarehouseDataset[] = saved
+      .filter((d) => !listedIds.has(d.id))
+      .map((d) => ({
+        id: d.id,
+        name: d.name || d.id,
+        description: null,
+        rowCount: d.rowCount,
+        columnCount: d.columnCount,
+        owner: null,
+        lastUpdated: null,
+      }))
+    // Configured-but-unlisted first: they are the ones somebody needs to see
+    // on arrival, and burying them under a page of new rows defeats the point.
+    return [...offPage, ...listed]
+  }, [datasets.data, saved])
 
   const toggleDataset = (id: string) =>
     setSelectedDatasetIds(
@@ -232,8 +276,12 @@ export function DiscoverStep() {
           : 'Select at least one dataset to continue.'
       }
       onNext={async () => {
-        const all = datasets.data?.datasets ?? []
-        const chosen = all.filter((d) => selection.includes(d.id))
+        /*
+         * From the merged rows, not the fetched page. `saveSelection` replaces
+         * the whole selection, so filtering against one page would delete
+         * every configured dataset that page did not happen to contain.
+         */
+        const chosen = rows.filter((d) => selection.includes(d.id))
         try {
           await saveSelection.mutateAsync(
             chosen.map((d) => ({
@@ -272,7 +320,9 @@ export function DiscoverStep() {
       >
         {(data) => (
           <DatasetTable
-            rows={data.datasets}
+            rows={rows}
+            configuredIds={savedIds}
+            listedCount={data.datasets.length}
             fetchedAt={data.fetchedAt}
             truncated={data.truncated}
             limit={data.limit}
@@ -295,6 +345,8 @@ export function DiscoverStep() {
 
 function DatasetTable({
   rows,
+  configuredIds,
+  listedCount,
   fetchedAt,
   truncated,
   limit,
@@ -307,6 +359,10 @@ function DatasetTable({
   onSetAll,
 }: {
   rows: WarehouseDataset[]
+  /** Already saved on the server for this connection, from a previous visit. */
+  configuredIds: string[]
+  /** How many of `rows` came from the live listing, as opposed to storage. */
+  listedCount: number
   fetchedAt: string
   /** The warehouse was proven to hold at least one dataset beyond these. */
   truncated: boolean
@@ -322,20 +378,62 @@ function DatasetTable({
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(10)
 
-  // Reset to first page when search changes
-  useEffect(() => {
+  /*
+   * Back to page one when the search changes.
+   *
+   * Compared during render rather than synchronised in an effect: an effect
+   * would paint the old page against the new results first, and React's own
+   * guidance is that a value derived from another value is not a side effect.
+   */
+  const [pageFor, setPageFor] = useState(search)
+  if (search !== pageFor) {
+    setPageFor(search)
     setPage(1)
-  }, [search])
+  }
+
+  const configured = useMemo(() => new Set(configuredIds), [configuredIds])
+  /** Saved previously but not in the current listing — the easily-lost ones. */
+  const offPageCount = rows.length - listedCount
+
+  /**
+   * Whether the ticked set differs from what is saved.
+   *
+   * Compared by contents, not by length: swapping one dataset for another
+   * leaves the count identical, and a "Reset to saved" button that vanishes
+   * exactly when somebody has made a change is worse than not having one.
+   */
+  const dirty = useMemo(() => {
+    if (selectedIds.length !== configuredIds.length) return true
+    const current = new Set(selectedIds)
+    return configuredIds.some((id) => !current.has(id))
+  }, [selectedIds, configuredIds])
 
   // Only the columns the response actually populates.
   const columns = useMemo(() => COLUMNS.filter((c) => c.present(rows)), [rows])
 
+  const query = search.trim().toLowerCase()
+
+  /**
+   * Matching rows.
+   *
+   * The id is always searchable, independently of which columns are on screen.
+   * It is not rendered in any column, so tying it to column visibility would
+   * make it findable or not for reasons nobody could see — and the id is what
+   * people actually have to hand, because it is what the extraction payload,
+   * the agent and Domo's own URLs all identify a dataset by.
+   *
+   * Everything else is matched through the visible columns' own searchers, so
+   * a hidden column is not silently searched.
+   */
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase()
-    if (!q) return rows
+    if (!query) return rows
     const searchers = columns.filter((c) => c.search).map((c) => c.search!)
-    return rows.filter((row) => searchers.some((read) => read(row).toLowerCase().includes(q)))
-  }, [rows, search, columns])
+    return rows.filter(
+      (row) =>
+        row.id.toLowerCase().includes(query) ||
+        searchers.some((read) => read(row).toLowerCase().includes(query))
+    )
+  }, [rows, query, columns])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const currentPage = Math.min(page, totalPages)
@@ -361,6 +459,46 @@ function DatasetTable({
 
   return (
     <div className="space-y-3">
+      {/*
+        What is already configured, stated on arrival.
+
+        Coming back to a connection, the first question is "what did I pick
+        last time" — and a page of ticked checkboxes scattered through a long
+        list does not answer it. The count does, and the second line covers the
+        case that caused real trouble: datasets configured earlier that this
+        listing did not reach.
+      */}
+      {configuredIds.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-xs">
+          <CheckCircle2 className="size-3.5 shrink-0 text-primary" aria-hidden />
+          <span className="text-foreground">
+            <strong className="font-medium">
+              {configuredIds.length} dataset{configuredIds.length === 1 ? '' : 's'}
+            </strong>{' '}
+            already configured for this connection
+            {offPageCount > 0 ? (
+              <>
+                {' '}
+                — {offPageCount} of them {offPageCount === 1 ? 'is' : 'are'} outside the
+                current listing and {offPageCount === 1 ? 'is' : 'are'} shown first below,
+                so {offPageCount === 1 ? 'it stays' : 'they stay'} selected when you save.
+              </>
+            ) : null}
+            .
+          </span>
+          {dirty ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="ml-auto h-6"
+              onClick={() => onSetAll(configuredIds)}
+            >
+              Reset to saved
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-xs">
           <Search
@@ -370,9 +508,9 @@ function DatasetTable({
           <Input
             value={searchValue}
             onChange={(e) => onSearch(e.target.value)}
-            placeholder="Search datasets…"
+            placeholder="Search datasets or paste an id…"
             className="pl-8"
-            aria-label="Search datasets"
+            aria-label="Search datasets by name, id, schema or owner"
           />
         </div>
         <div className="flex items-center gap-3 text-xs text-muted-foreground">
@@ -432,7 +570,7 @@ function DatasetTable({
                       aria-label={`Select ${row.name}`}
                     />
                   </td>
-                  {columns.map((col) => (
+                  {columns.map((col, colIndex) => (
                     <td
                       key={col.id}
                       className={cn(
@@ -440,7 +578,43 @@ function DatasetTable({
                         col.align === 'right' ? 'text-right' : 'text-left'
                       )}
                     >
-                      {col.render(row)}
+                      {/*
+                        The badge rides in the first column rather than taking
+                        a column of its own: it applies to a minority of rows,
+                        and an almost-empty column costs width on every row to
+                        say nothing about most of them.
+                      */}
+                      {colIndex === 0 ? (
+                        <div className="flex items-start gap-2">
+                          <div className="min-w-0 flex-1">
+                            {col.render(row)}
+                            {/*
+                              Shown only when the id is what matched.
+
+                              A row that appears because of something invisible
+                              reads as a bug in the search. Rendering the id on
+                              every row instead would cost a line of height on
+                              all of them to answer a question almost nobody is
+                              asking.
+                            */}
+                            {query && row.id.toLowerCase().includes(query) ? (
+                              <p className="truncate font-mono text-[11px] text-muted-foreground">
+                                {row.id}
+                              </p>
+                            ) : null}
+                          </div>
+                          {configured.has(row.id) ? (
+                            <Badge
+                              variant="outline"
+                              className="mt-0.5 shrink-0 border-primary/30 bg-primary/10 text-[10px] text-primary"
+                            >
+                              Configured
+                            </Badge>
+                          ) : null}
+                        </div>
+                      ) : (
+                        col.render(row)
+                      )}
                     </td>
                   ))}
                 </tr>

@@ -145,6 +145,74 @@ function toArtifactMeta(raw: RawArtifactMeta): AdkArtifactMeta {
   }
 }
 
+/**
+ * One context object: a single fact the extraction agent wrote.
+ *
+ * `payload` is JSONB and its shape varies by `object_type` — a `column_stats`
+ * row carries null rates and distinct values, a `transformation` row carries
+ * inputs and outputs. It is deliberately typed as an open record rather than a
+ * union: this service owns that shape, it will grow, and a union here would
+ * mean a frontend release every time the skill learns to record something new.
+ */
+export interface AdkContextObject {
+  id: string
+  bundle_id: string | null
+  session_id: string | null
+  object_type: string
+  qualified_name: string
+  source_type: string
+  verified: boolean
+  confidence: number | null
+  payload: Record<string, unknown> | null
+  reviewed_by: string | null
+  reviewed_at: string | null
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface AdkContextObjects {
+  workspaceId: string
+  /**
+   * Which run these came from.
+   *
+   * Null means this workspace has no session-tagged rows at all, in which case
+   * `objects` is empty — a different fact from "the run wrote nothing".
+   */
+  resolvedSessionId: string | null
+  count: number
+  objects: AdkContextObject[]
+}
+
+/**
+ * The facts a run wrote, straight from `context_objects`.
+ *
+ * Omitting `sessionId` resolves to the workspace's most recent run, which is
+ * the normal way to ask "what does the Context Layer currently know about this
+ * workspace" without having to hold on to a session id.
+ *
+ * Not under `/agents/{agent_name}/` — these rows are the store's, not any one
+ * agent's conversation, so the route is scoped to the workspace alone.
+ */
+export async function listAdkContextObjects(
+  workspaceId: string,
+  sessionId?: string
+): Promise<AdkContextObjects> {
+  const query = sessionId ? `?session_id=${encodeURIComponent(sessionId)}` : ''
+  const raw = await request<{
+    workspace_id: string
+    resolved_session_id: string | null
+    count: number
+    objects: AdkContextObject[]
+  }>(`${ADK_API_BASE_URL}/workspaces/${encodeURIComponent(workspaceId)}/context-objects${query}`)
+
+  return {
+    workspaceId: raw.workspace_id,
+    resolvedSessionId: raw.resolved_session_id ?? null,
+    count: raw.count ?? 0,
+    objects: raw.objects ?? [],
+  }
+}
+
 export async function createAdkSession(
   workspaceId: string,
   agentName: AdkAgentName,
@@ -187,18 +255,44 @@ export async function sendAdkMessage(
   workspaceId: string,
   agentName: AdkAgentName,
   sessionId: string,
-  body: { text: string; artifactIds?: string[] }
+  body: {
+    text: string
+    artifactIds?: string[]
+    /**
+     * The structured extraction path, for `context_layer_extractor` only —
+     * the service answers 422 for any other agent rather than ignoring it.
+     *
+     * Given these, the backend BUILDS the prompt from them, and `text` becomes
+     * optional extra instructions appended to it rather than the message
+     * itself. So sending dataset ids and an empty `text` is a complete
+     * request, not a half-filled one.
+     */
+    datasetIds?: string[]
+    /** Free-text business context folded into that built prompt. */
+    domain?: string
+  }
 ): Promise<AdkChatResponse> {
+  /*
+   * Only the fields the caller actually supplied.
+   *
+   * Every optional field on this endpoint is nullable server-side, so sending
+   * `"domain": null` is accepted — but it is still a claim about a field the
+   * caller never mentioned, and it makes the request on the wire differ from
+   * the documented one for no reason. An omitted key and an explicit null mean
+   * the same thing to the service and different things to anyone reading a
+   * network log.
+   */
+  const payload: Record<string, unknown> = { text: body.text, stream: false }
+  if (body.datasetIds) payload.dataset_ids = body.datasetIds
+  if (body.domain) payload.domain = body.domain
+  if (body.artifactIds) payload.artifact_ids = body.artifactIds
+
   const raw = await request<{ text: string; tool_calls?: string[]; interrupted?: boolean }>(
     `${sessionUrl(workspaceId, agentName, sessionId)}/messages`,
     {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        text: body.text,
-        artifact_ids: body.artifactIds ?? null,
-        stream: false,
-      }),
+      body: JSON.stringify(payload),
     }
   )
   return {

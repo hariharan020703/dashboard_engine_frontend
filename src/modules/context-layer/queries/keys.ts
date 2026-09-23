@@ -36,8 +36,17 @@ export const contextKeys = {
   tableProfile: (connectionId: string, tableId: string) =>
     [...contextKeys.profile(connectionId), 'table', tableId] as const,
 
-  understanding: (connectionId: string) =>
-    [...contextKeys.all, 'understanding', connectionId] as const,
+  /**
+   * The context extraction run. Lives against the Context Layer service, not
+   * the Node API, but is cached here like anything else this module reads.
+   */
+  /** The facts a run wrote — read from the Context Layer store itself. */
+  contextObjects: (connectionId: string) =>
+    [...contextKeys.all, 'context-objects', connectionId] as const,
+
+  extraction: (connectionId: string) =>
+    [...contextKeys.all, 'extraction', connectionId] as const,
+
 
   model: (connectionId: string) => [...contextKeys.all, 'model', connectionId] as const,
 

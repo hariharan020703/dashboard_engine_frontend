@@ -93,6 +93,77 @@ Re-pointing an individual step is an edit to `api/endpoints.ts` and nowhere else
 real Domo authentication, real dataset listing, real table profiling, the credential
 encrypted server-side.
 
+### Two backends, and exactly where the line is
+
+| Steps | Backend | Configured by |
+|---|---|---|
+| 1 Connect · 2 Discover · 3 Profile | **Node** (`backend/`) | `VITE_CONTEXT_API_URL`, blank = same-origin `/api` |
+| 4 Understand | **Context Layer service** (`Elze-backend/adk_agents/api`) | `VITE_ADK_API_BASE_URL`, default `:8300` |
+| 5–7 | not built | — |
+
+Steps 1–3 are source data and belong to the Node API. Step 4 is an AI job and is the **one
+place the workflow leaves it**, which is why `api/extractionApi.ts` goes through
+`@/api/adkAgentApi` instead of this module's `api/client.ts` — two backends, two
+transports, the boundary stated in one file rather than discovered in a component.
+
+**Profile's "Analyse with AI" is what runs it.** Two calls, in order:
+
+```
+POST /workspaces/{connectionId}/agents/context_layer_extractor/sessions
+     {}
+POST /workspaces/{connectionId}/agents/context_layer_extractor/sessions/{sessionId}/messages
+     { "text": "", "dataset_ids": [...selected...], "stream": false }
+```
+
+Three things about that payload:
+
+- **`workspace_id` IS the connection id.** That service has no workspaces table;
+  `adk_agents/api/db.py:workspace_exists` checks `SELECT 1 FROM connections WHERE id = %s`
+  against the same rows this application writes.
+- **`text` is empty on purpose.** The service builds the extraction prompt from
+  `dataset_ids` (`_build_extraction_prompt`); `text` is a slot for *extra* instructions
+  appended after it, not the message itself.
+- **`dataset_ids` is the saved selection, not the draft** — the set the profile was built
+  from and the one the service can resolve.
+
+`stream: false` holds the request open for the whole run — minutes, not seconds — so
+Profile stays put and shows progress rather than advancing to an empty screen. A failed run
+keeps you on Profile with the selection intact.
+
+### What Understand shows, and in what order
+
+Two things, from two different reads, and the order is deliberate:
+
+1. **Facts written to the context layer** — `GET /workspaces/{id}/context-objects`, which
+   resolves to the latest run when no `session_id` is given. These are the actual
+   `context_objects` rows: one per table, column, transformation or example the agent
+   recorded, each with `object_type`, `qualified_name`, `source_type` and `verified`.
+2. **Agent report** — the markdown the run returned, plus the tools it called (it *writes*,
+   so "what did that run do" shouldn't need the server logs).
+
+Facts first because they are what the run *did*; the report is its own *account* of the
+run, and the two can disagree. Leading with the prose would invite reading the account as
+the outcome.
+
+`payload` is JSONB whose shape varies by `object_type`, and `ContextObjectList` renders it
+**generically** — chips for arrays, JSON for objects, `description` promoted to body text
+because every type carries it. No renderer per type: that set belongs to the extraction
+skill, it will grow, and a switch here would silently hide anything new. Type filter chips
+are built from the types actually present, never a hardcoded list.
+
+`verified` splits the trust bands visually (green / amber) because it is the skill's own
+flag — true for structural facts, false for anything that needed interpretation, which is
+exactly what a human has to review.
+
+Both reads survive a reload: the report comes from the agent's own session transcript
+(`useExtraction`), the facts from the store (`useContextObjects`). Neither lives only in
+the query cache. A finished run invalidates the facts rather than seeding them — the chat
+response carries the agent's prose, not the rows it wrote.
+
+There is no Node-side `/understanding` contract any more. It was removed along with
+`blocks.tsx` when this step moved to the extraction agent — recoverable from git if a
+structured Node-side understanding is ever wanted.
+
 ### Where the line between Profile and Understand falls
 
 This is the distinction the workflow is built around, and it is easy to blur:
@@ -124,7 +195,44 @@ names and types are exact."* A null rate presented without its basis reads as a 
 the whole table. Domo exposes no semantic types, keys or quality score on this surface, so
 those come back `null` and render as `—` rather than being guessed from column names.
 
-Steps 4–7 have no backend yet. Rather than fake them, each renders an
+### Steps 5–7 — derived from the facts, decided by a human
+
+All three run against the Node backend, which reads `context_objects` **directly** — the
+two services share one database, so this needs no call to the Python tier. The ADK API is
+read-only for those rows, and the only service that can mutate them (`api/` on :8100) is
+one you would have to run and hand an admin token to.
+
+**Model** is derived, not stored: `table` rows become nodes, their `column_stats` rows
+become those nodes' columns, and `join` rows become edges carrying the join keys,
+cardinality and confidence the agent recorded. So the tables shown follow from the datasets
+chosen in Discover. There is no "detect" button — detection happened in step 4. A join
+naming a table with no `table` row still produces a node; dropping the edge would hide a
+relationship that was actually found.
+
+**Review** is every object the run wrote. Approve / Edit and approve / Reject / Skip, with
+type-specific editors. Two things make the persistence worth reading:
+
+- **Approving mirrors into `context_objects.verified`**, in the same transaction as our own
+  status. That column is what the read-side MCP server and the analyst agent filter on, so
+  an approval that only updated our table would look settled here and stay invisible
+  downstream.
+- **Four states do not fit in one boolean.** `pending`, `rejected` and `skipped` live in
+  `context_object_reviews`, a table this application owns. `skip` deliberately leaves
+  `verified` alone — it means "not now", not "this is wrong".
+
+Accepting a relationship on the Model canvas is the *same* call as approving that join in
+the queue. One endpoint, one flag, so the two screens cannot disagree.
+
+Editing merges the payload rather than replacing it: an editor sends the keys it renders,
+and replacing would drop the distinct values, sample sizes and notes it does not.
+
+**Publish** writes a named, versioned snapshot to `context_publications`. The **name** is
+the point — a connection is where the data came from ("Domo — Sales"), a published context
+is what it is *for* ("Revenue", "Site safety"), and one connection can produce several. The
+version counts **per name**, so republishing "Revenue" makes v2 of Revenue while a new name
+starts again at v1. Only approved facts are included, and the snapshot stores the facts
+themselves rather than pointing at live rows — a version that changed whenever somebody
+edited a description would not be a version. Rather than fake them, each renders an
 `EndpointPendingState` naming the exact route it is waiting for. `STEP_ENDPOINT_LIVE` in
 `api/endpoints.ts` records which is which; flip a step to `true` when its route ships.
 
@@ -183,6 +291,28 @@ Three things follow, and each is load-bearing:
   table says *"Showing the first 20"* with a **Load more** button and the count reads `20+`.
   Somebody selecting from a capped list without being told is how a context ends up quietly
   missing most of a warehouse.
+
+## Returning to a connection
+
+Discover shows what is **already configured** for the connection you came back to. Three
+parts, and the third is the one that matters:
+
+1. A banner: *"7 datasets already configured for this connection."*
+2. A **Configured** badge on each such row, and a **Reset to saved** action once the ticked
+   set differs from the stored one — compared by contents, not by length, so swapping one
+   dataset for another still counts as a change.
+3. **Rows for configured datasets the current listing did not reach**, rendered first.
+
+That third part is a correctness fix, not a nicety. The listing is capped (20 by default),
+`saveSelection` **replaces** the whole selection, and the save used to be built by
+filtering the fetched page — so a dataset configured earlier that fell outside the current
+page rendered nowhere, looked unconfigured, and was silently deleted the next time anyone
+pressed Next. The merged row set is what the save is now built from, so nothing can be
+dropped that nobody unticked.
+
+Those stand-in rows carry only what the server actually stored at selection time — id,
+name, `rowCount`, `columnCount`. Description, owner and the rest are `null` and render as
+`—`, because this application never saw them for those rows.
 
 ## Connectors
 

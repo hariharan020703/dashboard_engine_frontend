@@ -11,14 +11,13 @@ import {
 } from '@xyflow/react'
 import type { Edge, Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Check, Loader2, RefreshCw, Sparkles, Trash2, X } from 'lucide-react'
+import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { notify } from '@/components/common/notify'
 import { cn } from '@/lib/utils'
 import { StepFrame } from '../../components/StepFrame'
 import {
   EmptyState,
-  ErrorState,
   NoConnectionState,
   QueryBoundary,
   TableSkeleton,
@@ -26,12 +25,7 @@ import {
 import { AiBadge, ConfidenceMeter, StatusBadge } from '../../components/primitives'
 import { formatRelativeTime, formatText } from '../../components/format'
 import { endpoints } from '../../api'
-import {
-  useDeleteRelationship,
-  useGenerateModel,
-  useModel,
-  useUpdateRelationship,
-} from '../../queries/hooks'
+import { useDecideRelationship, useModel } from '../../queries/hooks'
 import { useWorkflow } from '../../state/workflowContext'
 import type { ModelEdge, ModelGraph } from '../../types'
 import { TableNode } from './TableNode'
@@ -40,9 +34,15 @@ import { autoLayout } from './layout'
 /**
  * Step 5 — Model.
  *
- * The graph is the backend's. Nodes, edges, join conditions, relationship types
- * and confidences all arrive from `GET .../model`; the canvas draws them and
- * lets somebody accept, reject, edit or delete a relationship.
+ * The graph is DERIVED, by the backend, from what the extraction wrote:
+ * `table` rows become nodes, their `column_stats` rows become those nodes'
+ * columns, and `join` rows become edges carrying the join keys, cardinality
+ * and confidence the agent recorded. So the tables shown here are the ones the
+ * run covered, which follows from the datasets chosen in Discover.
+ *
+ * There is nothing to detect from this screen — detection happened in step 4.
+ * Accepting or rejecting a relationship is a review decision on that join row,
+ * the same one the Review step records.
  *
  * It is built to work at any size. Positions come from `autoLayout` unless the
  * backend saved one, the node component caps its own column list, and zoom, pan
@@ -56,7 +56,6 @@ const nodeTypes = { table: TableNode }
 export function ModelStep() {
   const { connectionId, goToStep } = useWorkflow()
   const model = useModel(connectionId)
-  const generate = useGenerateModel(connectionId)
 
   if (!connectionId) {
     return (
@@ -66,37 +65,32 @@ export function ModelStep() {
     )
   }
 
-  const runGeneration = async () => {
-    try {
-      await generate.mutateAsync()
-      notify.success('Relationship detection started.')
-    } catch (err) {
-      notify.failure('start relationship detection', err)
-    }
-  }
+  const nodeCount = model.data?.nodes.length ?? 0
+  const edgeCount = model.data?.edges.length ?? 0
 
   return (
     <StepFrame
       title="Model relationships"
-      description="Relationships the backend detected between your tables. Review each one before it becomes part of the context."
+      description="The tables the extraction recorded, and the relationships it found between them."
       actions={
         <Button
           variant="outline"
           size="sm"
-          onClick={runGeneration}
-          disabled={generate.isPending || model.data?.status === 'generating'}
+          onClick={() => model.refetch()}
+          disabled={model.isFetching}
         >
-          {generate.isPending || model.data?.status === 'generating' ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <RefreshCw className="size-4" aria-hidden />
-          )}
-          {model.data?.generatedAt ? 'Re-detect' : 'Detect'}
+          <RefreshCw
+            className={cn('size-4', model.isFetching && 'animate-spin')}
+            aria-hidden
+          />
+          Refresh
         </Button>
       }
       footerNote={
         model.data?.generatedAt
-          ? `Detected ${formatRelativeTime(model.data.generatedAt)}`
+          ? `${nodeCount} table${nodeCount === 1 ? '' : 's'} · ${edgeCount} relationship${
+              edgeCount === 1 ? '' : 's'
+            } · from the run of ${formatRelativeTime(model.data.generatedAt)}`
           : undefined
       }
     >
@@ -109,7 +103,11 @@ export function ModelStep() {
       >
         {(data) => (
           <ReactFlowProvider>
-            <ModelCanvas graph={data} connectionId={connectionId} onGenerate={runGeneration} />
+            <ModelCanvas
+              graph={data}
+              connectionId={connectionId}
+              onGoToUnderstand={() => goToStep('understand')}
+            />
           </ReactFlowProvider>
         )}
       </QueryBoundary>
@@ -120,16 +118,15 @@ export function ModelStep() {
 function ModelCanvas({
   graph,
   connectionId,
-  onGenerate,
+  onGoToUnderstand,
 }: {
   graph: ModelGraph
   connectionId: string
-  onGenerate: () => void
+  onGoToUnderstand: () => void
 }) {
   const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null)
 
-  const updateRelationship = useUpdateRelationship(connectionId)
-  const deleteRelationship = useDeleteRelationship(connectionId)
+  const decideRelationship = useDecideRelationship(connectionId)
 
   /* Backend graph -> React Flow's shape. Recomputed when the backend data changes. */
   const initialNodes = useMemo<Node[]>(() => {
@@ -192,9 +189,15 @@ function ModelCanvas({
 
   const onEdgeClick = useCallback((_: unknown, edge: Edge) => setSelectedEdgeId(edge.id), [])
 
+  /*
+   * Accepting or rejecting here is the SAME decision the Review step records
+   * on this join, reached from the canvas instead of from the queue. One
+   * endpoint, one `verified` flag — so the two screens cannot end up
+   * disagreeing about whether a relationship is trusted.
+   */
   const decide = async (edge: ModelEdge, status: 'accepted' | 'rejected') => {
     try {
-      await updateRelationship.mutateAsync({ id: edge.id, body: { status } })
+      await decideRelationship.mutateAsync({ id: edge.id, status })
       notify.success(status === 'accepted' ? 'Relationship accepted.' : 'Relationship rejected.')
       if (status === 'rejected') setSelectedEdgeId(null)
     } catch (err) {
@@ -202,55 +205,47 @@ function ModelCanvas({
     }
   }
 
-  const remove = async (edge: ModelEdge) => {
-    try {
-      await deleteRelationship.mutateAsync(edge.id)
-      setSelectedEdgeId(null)
-      notify.success('Relationship deleted.')
-    } catch (err) {
-      notify.failure('delete the relationship', err)
-    }
-  }
-
-  if (graph.status === 'generating') {
-    return (
-      <div className="flex flex-col items-center justify-center rounded-lg border border-dashed px-6 py-16 text-center">
-        <Loader2 className="mb-4 size-6 animate-spin text-primary" aria-hidden />
-        <p className="text-sm font-medium">Detecting relationships</p>
-        <p className="mt-1 text-sm text-muted-foreground">
-          This screen updates on its own when the run finishes.
-        </p>
-      </div>
-    )
-  }
-
-  if (graph.status === 'failed') {
-    return (
-      <ErrorState
-        context="detect relationships"
-        error={new Error(graph.error ?? 'Detection did not complete.')}
-        onRetry={onGenerate}
-      />
-    )
-  }
-
+  /*
+   * An empty graph is not a failure, and there is nothing to retry from here.
+   *
+   * The graph is derived from what the extraction wrote: no `table` rows means
+   * no run has happened, and the fix is in Understand rather than on this
+   * screen. Offering a "detect" button here would imply this step can produce
+   * a model on its own, which it cannot.
+   */
   if (graph.nodes.length === 0) {
     return (
       <EmptyState
         title="No model yet"
-        detail="Run detection to find relationships between the tables you profiled."
+        detail="The model is built from what the extraction recorded. Run it in Understand, and any tables and relationships it finds will appear here."
         action={
-          <Button size="sm" onClick={onGenerate}>
+          <Button size="sm" onClick={onGoToUnderstand}>
             <Sparkles className="size-4" aria-hidden />
-            Detect relationships
+            Go to Understand
           </Button>
         }
       />
     )
   }
 
+  /*
+   * Tables but no relationships is a real and common answer — three unrelated
+   * Domo datasets genuinely share no join. Said plainly rather than left as an
+   * empty canvas somebody reads as broken.
+   */
+  const noRelationships = graph.edges.length === 0
+
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+    <div className="space-y-3">
+      {noRelationships ? (
+        <p className="rounded-md border border-dashed px-3 py-2 text-xs text-muted-foreground">
+          The extraction recorded {graph.nodes.length} table
+          {graph.nodes.length === 1 ? '' : 's'} but no relationships between them. That is a
+          real answer for datasets that genuinely share no join — not a failure to look.
+        </p>
+      ) : null}
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
       <div className="h-[560px] overflow-hidden rounded-lg border bg-muted/20">
         <ReactFlow
           nodes={nodes}
@@ -278,10 +273,9 @@ function ModelCanvas({
         {selectedEdge ? (
           <RelationshipDetail
             edge={selectedEdge}
-            busy={updateRelationship.isPending || deleteRelationship.isPending}
+            busy={decideRelationship.isPending}
             onAccept={() => decide(selectedEdge, 'accepted')}
             onReject={() => decide(selectedEdge, 'rejected')}
-            onDelete={() => remove(selectedEdge)}
             onClose={() => setSelectedEdgeId(null)}
           />
         ) : (
@@ -311,6 +305,7 @@ function ModelCanvas({
         )}
       </aside>
     </div>
+    </div>
   )
 }
 
@@ -319,14 +314,12 @@ function RelationshipDetail({
   busy,
   onAccept,
   onReject,
-  onDelete,
   onClose,
 }: {
   edge: ModelEdge
   busy: boolean
   onAccept: () => void
   onReject: () => void
-  onDelete: () => void
   onClose: () => void
 }) {
   return (
@@ -394,15 +387,17 @@ function RelationshipDetail({
             </Button>
           </>
         ) : (
-          <Button
-            size="sm"
-            variant="ghost"
-            className={cn('text-destructive hover:text-destructive')}
-            onClick={onDelete}
-            disabled={busy}
-          >
-            <Trash2 className="size-4" aria-hidden />
-            Delete
+          /*
+           * A decided relationship can be changed, not deleted.
+           *
+           * The edge is a fact the extraction recorded; removing it would be
+           * erasing what the source said rather than disagreeing with it, and
+           * the next run would find it again anyway. Rejecting is the move,
+           * and it sticks.
+           */
+          <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
+            <X className="size-4" aria-hidden />
+            Reject instead
           </Button>
         )}
       </footer>

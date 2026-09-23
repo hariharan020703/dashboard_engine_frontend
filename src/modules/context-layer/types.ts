@@ -3,15 +3,18 @@
  *
  * Two halves, and the difference matters when reading this file:
  *
- *   LIVE      — steps 1 and 2. These shapes are what the backend returns
+ *   LIVE      — steps 1 to 3. These shapes are what the Node backend returns
  *               today (backend/src/modules/context-layer/). Changing one means
  *               changing the backend with it.
  *
- *   PROPOSED  — steps 3 to 7. The endpoints behind these do not exist yet.
+ *   PROPOSED  — steps 5 to 7. The endpoints behind these do not exist yet.
  *               The shapes are the contract the frontend is written against,
  *               published here so the backend has something exact to build to.
  *               Every one is marked. When the real contract arrives, this file
  *               is the diff.
+ *
+ * Step 4 (Understand) is in neither half: it does not talk to the Node backend
+ * at all. See its section below.
  *
  * A rule that holds throughout: a field the backend may not know is typed
  * `| null`, never defaulted to a number. `rowCount: null` renders as "—";
@@ -252,104 +255,13 @@ export interface QualityIssue {
 }
 
 /* ======================================================= step 4 — understand
-   PROPOSED, AI-generated. GET/POST /context/connections/:id/understanding
+   Not a Node API contract, and deliberately empty.
+
+   Understand renders the output of the `context_layer_extractor` agent, run
+   against the Context Layer service (Elze-backend) — see api/extractionApi.ts
+   for the shape. Nothing is described here because what that agent returns is
+   markdown it wrote, not a structure this application defines.
    ========================================================================== */
-
-/**
- * One piece of AI output, discriminated by `type`.
- *
- * The backend decides what it produces; the frontend has a renderer per type
- * and a visible fallback for a type it does not know, so a new block type is
- * additive rather than breaking. Nothing here is hardcoded — "Net revenue",
- * "Region" and the rest of the mockup are whatever the backend returned.
- */
-export type UnderstandingBlock =
-  | { type: 'text'; id: string; title?: string | null; body: string }
-  | { type: 'markdown'; id: string; title?: string | null; body: string }
-  | { type: 'insight'; id: string; title?: string | null; body: string; confidence?: number | null }
-  | { type: 'recommendation'; id: string; title?: string | null; body: string }
-  | { type: 'warning'; id: string; title?: string | null; body: string }
-  | {
-      type: 'metric'
-      id: string
-      name: string
-      description?: string | null
-      formula?: string | null
-      unit?: string | null
-      confidence?: number | null
-    }
-  | {
-      type: 'definition'
-      id: string
-      name: string
-      definition: string
-      source?: string | null
-      confidence?: number | null
-    }
-  | {
-      type: 'entity'
-      id: string
-      name: string
-      description?: string | null
-      attributes?: string[] | null
-      confidence?: number | null
-    }
-  | {
-      type: 'dimension'
-      id: string
-      name: string
-      description?: string | null
-      hierarchy?: string[] | null
-      confidence?: number | null
-    }
-  | { type: 'list'; id: string; title?: string | null; items: string[]; ordered?: boolean }
-  | {
-      type: 'key-value'
-      id: string
-      title?: string | null
-      pairs: Array<{ key: string; value: string }>
-    }
-  | {
-      type: 'table'
-      id: string
-      title?: string | null
-      columns: string[]
-      rows: Array<Array<string | number | null>>
-    }
-
-/** The discriminator values the frontend has a dedicated renderer for. */
-export type UnderstandingBlockType = UnderstandingBlock['type']
-
-/** One tab of the Understand step. Tabs are data, not hardcoded. */
-export interface UnderstandingSection {
-  id: string
-  title: string
-  blocks: UnderstandingBlock[]
-}
-
-/** A headline count. Rendered as a tile; label and value both come from the API. */
-export interface UnderstandingStat {
-  id: string
-  label: string
-  value: number | string
-  hint?: string | null
-  /** Names a section id to jump to, when the backend links them. */
-  sectionId?: string | null
-}
-
-export interface Understanding {
-  connectionId: string
-  status: 'pending' | 'generating' | 'ready' | 'failed'
-  generatedAt: string | null
-  /** Which model produced this, when the backend chooses to say. */
-  model: string | null
-  /** Present when `status` is 'failed'. Safe for display. */
-  error: string | null
-  stats: UnderstandingStat[]
-  sections: UnderstandingSection[]
-  /** Suggested questions to ask of the published context. */
-  sampleQuestions: string[]
-}
 
 /* =========================================================== step 5 — model
    PROPOSED, AI-generated. GET /context/connections/:id/model
@@ -474,7 +386,7 @@ export interface ReviewItemUpdate {
 }
 
 /* ========================================================= step 7 — publish
-   PROPOSED. GET/POST /context/connections/:id/publish
+   LIVE. GET/POST /context/connections/:id/publish
    ========================================================================== */
 
 /** A headline count on the publish screen. Label and value both backend-owned. */
@@ -507,6 +419,16 @@ export interface PublishBlocker {
 
 export interface PublishSummary {
   connectionId: string
+  /**
+   * A starting point for the name field, not the answer.
+   *
+   * The previous publication name where there is one, the connection name
+   * otherwise. A connection is where the data came from; a published context
+   * is what it is FOR, and one connection can produce several.
+   */
+  suggestedName: string
+  /** The last version published under that name, or null. */
+  previousVersion: number | null
   stats: PublishStat[]
   datasets: PublishDataset[]
   content: PublishContentItem[]
@@ -520,9 +442,27 @@ export interface PublishValidation {
   warnings: PublishBlocker[]
 }
 
+/** One published version, as the history lists it. */
+export interface PublishedVersion {
+  id: string
+  name: string
+  version: number
+  sessionId: string | null
+  objectCount: number
+  stats: Record<string, unknown>
+  publishedBy: number | null
+  publishedAt: string
+}
+
 export interface PublishResult {
+  id: string
+  /** The name it was published under. */
+  name: string
+  /** Per NAME, not per connection: republishing "Revenue" makes v2 of Revenue. */
   version: string
   publishedAt: string
+  /** How many approved facts the snapshot holds. */
+  objectCount: number
   status: 'published' | 'failed' | string
 }
 

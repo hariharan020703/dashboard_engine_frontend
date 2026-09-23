@@ -122,7 +122,17 @@ function ConnectorTile({
   return (
     <Wrapper
       {...(connectable
-        ? { type: 'button' as const, onClick: onSelect, 'aria-pressed': selected }
+        ? {
+            type: 'button' as const,
+            onClick: onSelect,
+            /*
+             * `aria-haspopup`, not `aria-pressed`: choosing a connector opens
+             * the credential dialog, it does not toggle a state. Announcing it
+             * as a pressed toggle would describe a control that does not exist.
+             */
+            'aria-haspopup': 'dialog' as const,
+            'aria-expanded': selected,
+          }
         : { 'aria-disabled': true })}
       className={cn(
         'relative flex w-full flex-col items-start gap-2.5 rounded-lg border p-4 text-left transition-all',

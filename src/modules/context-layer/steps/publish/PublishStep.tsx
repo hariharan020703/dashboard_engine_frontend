@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { AlertTriangle, CheckCircle2, Loader2, Rocket, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { notify } from '@/components/common/notify'
 import { cn } from '@/lib/utils'
@@ -41,6 +42,16 @@ export function PublishStep() {
   const [notifyTeam, setNotifyTeam] = useState(true)
   const [published, setPublished] = useState<PublishResult | null>(null)
 
+  /**
+   * What this context is called.
+   *
+   * `null` until somebody types, at which point it stops tracking the
+   * backend's suggestion. Derived rather than seeded by an effect, for the
+   * same reason as everywhere else in this module: a refetch landing mid-typing
+   * must not overwrite what is in the box.
+   */
+  const [nameDraft, setNameDraft] = useState<string | null>(null)
+
   if (!connectionId) {
     return (
       <StepFrame title="Publish context layer" hideNext>
@@ -49,7 +60,7 @@ export function PublishStep() {
     )
   }
 
-  const run = async () => {
+  const run = async (name: string) => {
     try {
       // Pre-flight first. Publishing into a failed validation is how a broken
       // context reaches the things that read it.
@@ -61,9 +72,12 @@ export function PublishStep() {
         )
         return
       }
-      const result = await publish.mutateAsync({ notifyTeam })
+      const result = await publish.mutateAsync({ name, notifyTeam })
       setPublished(result)
-      notify.success('Context published.', `Version ${result.version}`)
+      notify.success(
+        `“${result.name}” published.`,
+        `${result.version} · ${result.objectCount} fact${result.objectCount === 1 ? '' : 's'}`
+      )
     } catch (err) {
       notify.failure('publish the context layer', err)
     }
@@ -156,31 +170,73 @@ export function PublishStep() {
             ) : null}
 
             {published ? null : (
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border bg-card p-4">
-                <div className="flex items-center gap-2">
-                  <Checkbox
-                    id="notify-team"
-                    checked={notifyTeam}
-                    onCheckedChange={(checked) => setNotifyTeam(checked === true)}
+              <div className="space-y-4 rounded-lg border bg-card p-4">
+                {/*
+                  The name is the point of this step.
+
+                  A connection is where the data came from ("Domo — Sales"); a
+                  published context is what it is FOR ("Revenue", "Site
+                  safety"), and one connection can produce several. The version
+                  counts per name, so republishing the same one makes v2 of it
+                  while a new name starts again at v1.
+                */}
+                <div className="space-y-1.5">
+                  <Label htmlFor="context-name">Context name</Label>
+                  <Input
+                    id="context-name"
+                    value={nameDraft ?? data.suggestedName ?? ''}
+                    onChange={(e) => setNameDraft(e.target.value)}
+                    placeholder="Revenue"
+                    maxLength={120}
                   />
-                  <Label htmlFor="notify-team" className="text-sm font-normal">
-                    Notify team after publishing
-                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    What this context is for, not where it came from. Everything approved is
+                    stored under this name
+                    {data.previousVersion !== null ? (
+                      <>
+                        {' '}
+                        — publishing again as{' '}
+                        <strong className="font-medium text-foreground">
+                          {data.suggestedName}
+                        </strong>{' '}
+                        makes v{data.previousVersion + 1}
+                      </>
+                    ) : null}
+                    .
+                  </p>
                 </div>
 
-                <Button onClick={run} disabled={busy || !data.ready}>
-                  {busy ? (
-                    <>
-                      <Loader2 className="size-4 animate-spin" aria-hidden />
-                      {validate.isPending ? 'Validating…' : 'Publishing…'}
-                    </>
-                  ) : (
-                    <>
-                      <Rocket className="size-4" aria-hidden />
-                      Publish
-                    </>
-                  )}
-                </Button>
+                <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="notify-team"
+                      checked={notifyTeam}
+                      onCheckedChange={(checked) => setNotifyTeam(checked === true)}
+                    />
+                    <Label htmlFor="notify-team" className="text-sm font-normal">
+                      Notify team after publishing
+                    </Label>
+                  </div>
+
+                  <Button
+                    onClick={() => run((nameDraft ?? data.suggestedName ?? '').trim())}
+                    disabled={
+                      busy || !data.ready || (nameDraft ?? data.suggestedName ?? '').trim().length < 2
+                    }
+                  >
+                    {busy ? (
+                      <>
+                        <Loader2 className="size-4 animate-spin" aria-hidden />
+                        {validate.isPending ? 'Validating…' : 'Publishing…'}
+                      </>
+                    ) : (
+                      <>
+                        <Rocket className="size-4" aria-hidden />
+                        Publish
+                      </>
+                    )}
+                  </Button>
+                </div>
               </div>
             )}
           </div>
@@ -249,10 +305,11 @@ function PublishedBanner({ result }: { result: PublishResult }) {
       />
       <div>
         <p className="text-sm font-medium text-emerald-800 dark:text-emerald-200">
-          Published successfully
+          “{result.name}” published
         </p>
         <p className="mt-0.5 text-sm text-emerald-700 dark:text-emerald-300">
-          Version {result.version} · {formatDateTime(result.publishedAt)}
+          {result.version} · {result.objectCount} fact
+          {result.objectCount === 1 ? '' : 's'} · {formatDateTime(result.publishedAt)}
         </p>
       </div>
     </div>
