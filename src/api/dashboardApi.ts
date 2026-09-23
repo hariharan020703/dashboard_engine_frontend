@@ -1,4 +1,4 @@
-import { get, patch, post } from '@/api/http'
+import { del, get, patch, post } from '@/api/http'
 import type {
   HydratedDashboardView,
   CardDefinition,
@@ -13,6 +13,37 @@ import type {
  * the caller's company AND the caller holds a grant on it, both checked on the
  * server before any SQL is planned. The query engine behind them is untouched.
  */
+
+export interface CreateDashboardPayload {
+  id?: string
+  title: string
+  description?: string
+  companyId?: number | null
+  dataSource?: unknown
+  layout?: unknown
+  slicers?: unknown[]
+  cards?: CardDefinition[]
+  spec?: unknown
+}
+
+export interface CreatedDashboard {
+  id: string
+  title: string
+  description?: string | null
+  companyId: number | null
+  accessLevel: string
+  spec?: unknown
+}
+
+/** Creates a new dashboard. Platform admin, Company admin, or Company user. */
+export function createDashboard(payload: CreateDashboardPayload): Promise<CreatedDashboard> {
+  return post<CreatedDashboard>('/dashboard', payload)
+}
+
+/** Deletes a dashboard. Platform admin or Company admin only. */
+export function deleteDashboard(dashboardId: string): Promise<{ deleted: boolean; dashboardId: string }> {
+  return del<{ deleted: boolean; dashboardId: string }>(`/dashboard/${encodeURIComponent(dashboardId)}`)
+}
 
 /**
  * Slicer selections, as the engine expects them: one query parameter per
@@ -64,3 +95,4 @@ export function previewCard(
 ): Promise<PreviewResult> {
   return post<PreviewResult>('/dashboard/preview', { card, filters, dashboardId })
 }
+

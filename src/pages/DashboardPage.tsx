@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Clock, RefreshCw, Share2 } from 'lucide-react'
-import { Link, useParams } from 'react-router-dom'
+import { Clock, RefreshCw, Share2, Trash2 } from 'lucide-react'
+import { Link, useNavigate, useParams } from 'react-router-dom'
 import DashboardRenderer from '@/components/dashboard/DashboardRenderer'
-import { fetchView, patchCard } from '@/api/dashboardApi'
+import { deleteDashboard, fetchView, patchCard } from '@/api/dashboardApi'
 import { errorCode, errorMessage } from '@/api/http'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
@@ -10,13 +10,12 @@ import { buildFilters } from '@/services/filters'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { AccessLevelBadge } from '@/components/common/Badges'
 import { ErrorState, NotFoundState, PermissionDeniedState } from '@/components/common/States'
+import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { notify } from '@/components/common/notify'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import type { HydratedDashboardView, CardDefinition, Selections } from '@/types/dashboard'
 
-/** The levels that may change a dashboard's cards, per the access catalogue. */
-const EDITING_LEVELS = new Set(['developer', 'admin'])
 
 /**
  * A dashboard.
@@ -45,8 +44,9 @@ export default function DashboardPage() {
 }
 
 function DashboardView({ dashboardId }: { dashboardId: string }) {
-  const { can } = useAuth()
+  const { can, refresh } = useAuth()
   const paths = usePaths()
+  const navigate = useNavigate()
 
   const [view, setView] = useState<HydratedDashboardView | null>(null)
   const [loading, setLoading] = useState(true)
@@ -54,9 +54,13 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
   const [error, setError] = useState<unknown>(null)
   const [selections, setSelections] = useState<Selections>({})
   const [lastRun, setLastRun] = useState<string>('')
+  const [deleting, setDeleting] = useState(false)
+  const [deletePending, setDeletePending] = useState(false)
 
-  const canEdit = Boolean(view && EDITING_LEVELS.has(view.accessLevel) && can('dashboard.update'))
+  const canEdit = Boolean(view && can('dashboard.update'))
+  const canDelete = Boolean(can('dashboard.delete'))
   const canShare = Boolean(view && view.accessLevel !== 'view' && can('access.grant') && paths.access)
+
 
   /** Mirrors the slicer state the server just returned, so the two agree. */
   const syncSelections = (next: HydratedDashboardView) => {
@@ -132,6 +136,20 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
       notify.failure('save the dashboard', err)
     } finally {
       setBusy(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setDeletePending(true)
+    try {
+      await deleteDashboard(dashboardId)
+      notify.success('Dashboard deleted.')
+      await refresh()
+      navigate(paths.dashboards)
+    } catch (err) {
+      notify.failure('delete dashboard', err)
+    } finally {
+      setDeletePending(false)
     }
   }
 
@@ -234,6 +252,18 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
                     </Link>
                   </Button>
                 )}
+
+                {canDelete && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                    onClick={() => setDeleting(true)}
+                  >
+                    <Trash2 className="size-4" aria-hidden />
+                    Delete
+                  </Button>
+                )}
               </>
             }
           />
@@ -267,6 +297,18 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
           void reload({})
         }}
         onCardEdit={onCardEdit}
+      />
+
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete "${title}"?`}
+        body="Are you sure you want to delete this dashboard? This cannot be undone."
+        consequence="All cards, custom configurations, and user access grants for this dashboard will be permanently deleted."
+        confirmLabel="Delete Dashboard"
+        destructive
+        pending={deletePending}
+        onConfirm={handleDelete}
       />
     </div>
   )

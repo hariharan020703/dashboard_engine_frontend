@@ -44,7 +44,7 @@ export default function PlatformOverviewPage() {
 
   const overview = useAsync(() => fetchPlatformOverview(), [])
   const companies = useAsync(() => listCompanies(), [])
-  const activity = useAsync(() => fetchAuditLogs(8), [])
+  const activity = useAsync(() => fetchAuditLogs(5), [])
 
   const counts = overview.data
   const recent = [...(companies.data ?? [])]
