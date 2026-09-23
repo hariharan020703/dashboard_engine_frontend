@@ -1,10 +1,8 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Database, Plug, RefreshCw, Trash2 } from 'lucide-react'
+import { ArrowRight, Database, Plus, RefreshCw, Table2, Trash2 } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
-import { useAsync } from '@/hooks/useAsync'
-import { createAdkSession } from '@/api/adkAgentApi'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/common/States'
@@ -12,279 +10,176 @@ import { notify } from '@/components/common/notify'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import ConnectDialog from './ConnectDialog'
-import { deleteConnection, listConnections, listConnectors, verifyConnection } from './api'
-import type { Connection, Connector } from './types'
+import { ContextQueryProvider } from './queries/QueryProvider'
+import { useConnections, useConnectors, useDeleteConnection, useVerifyConnection } from './queries/hooks'
+import { connectorPresentation, isConnectable } from './connectors/registry'
+import { formatRelativeTime, maskSecretHint } from './components/format'
+import type { Connection } from './types'
 
 /**
- * The context layer: where a company's warehouses are connected.
+ * The Context Layer landing: the data sources this company has connected.
  *
- * Two halves. The gallery is what can be connected — including the connectors
- * that are not built yet, listed and visibly disabled, because a page showing
- * only Domo answers "can I bring my data in" wrongly. Below it are the
- * connections this company already has.
+ * This is what the sidebar's "Context layer" opens, and it answers one
+ * question — what is already connected, and is it still working. Building a
+ * context is a separate, longer task, so it lives behind "New connection" in
+ * the seven-step builder rather than being unfolded here.
  *
- * Choosing datasets happens one level down, per connection, because that list
- * is fetched live from the warehouse and does not belong on a page that has to
- * render when the warehouse is unreachable.
+ * Connecting happens in the builder's first step and nowhere else. There used
+ * to be a second connect dialog on this page; two forms for one credential is
+ * exactly how the wording, the validation and the field list drift apart, so
+ * the button here navigates into the workflow instead of opening its own.
  *
- * Every link here is built from `paths`, not written out. This screen is
- * mounted in both shells, and it used to send a platform administrator to
- * /context — a workspace address — which dropped them out of the console
- * mid-task. A feature that appears in two shells must not know which one it is
- * in.
+ * Every link is built from `paths`, never written out. This screen is mounted
+ * in both shells, and a hardcoded /context would drop a platform administrator
+ * out of the console mid-task.
  */
 export default function ContextLayerPage() {
+  return (
+    <ContextQueryProvider>
+      <ConnectionsLanding />
+    </ContextQueryProvider>
+  )
+}
+
+function ConnectionsLanding() {
   const { can } = useAuth()
   const paths = usePaths()
   const navigate = useNavigate()
   const canManage = can('context.manage')
 
-  const connectors = useAsync(() => listConnectors(), [])
-  const connections = useAsync(() => listConnections(), [])
+  const connections = useConnections()
+  const connectors = useConnectors()
+  const verify = useVerifyConnection()
+  const remove = useDeleteConnection()
 
-  const [connecting, setConnecting] = useState<Connector | null>(null)
   const [deleting, setDeleting] = useState<Connection | null>(null)
-  const [deletePending, setDeletePending] = useState(false)
   const [busyId, setBusyId] = useState<string | null>(null)
 
-  const verify = async (connection: Connection) => {
+  const runVerify = async (connection: Connection) => {
     setBusyId(connection.id)
     try {
-      await verifyConnection(connection.id)
+      await verify.mutateAsync(connection.id)
       notify.success(`${connection.name} is still connected.`)
     } catch (err) {
       notify.failure(`verify ${connection.name}`, err)
     } finally {
-      // Reloaded either way: a refused token has just been recorded as invalid
-      // on the server, and the row on screen should say so.
-      connections.reload()
       setBusyId(null)
     }
   }
 
   const confirmDelete = async () => {
     if (!deleting) return
-    setDeletePending(true)
     try {
-      await deleteConnection(deleting.id)
+      await remove.mutateAsync(deleting.id)
       notify.success(`${deleting.name} was removed.`, 'Its stored credential was deleted.')
-      connections.reload()
       setDeleting(null)
     } catch (err) {
       notify.failure('remove that connection', err)
-    } finally {
-      setDeletePending(false)
     }
   }
 
-  const loading = connectors.loading || connections.loading
-  const error = connectors.error ?? connections.error
+  const newConnection = (
+    <Button onClick={() => navigate(paths.contextBuilder())} disabled={!canManage}>
+      <Plus className="size-4" aria-hidden />
+      New connection
+    </Button>
+  )
+
+  const list = connections.data ?? []
+  const available = (connectors.data ?? []).filter(isConnectable)
+  const planned = (connectors.data ?? []).filter((c) => !isConnectable(c))
 
   return (
     <Page>
       <PageHeader
         title="Context layer"
-        description="Connect a data warehouse, then choose the datasets a context is built from."
+        description="The data sources connected to this company, and the context built from them."
+        actions={canManage ? newConnection : undefined}
       />
 
-      {error ? (
+      {connections.isError ? (
         <Section>
           <ErrorState
-            error={error}
-            title="Unable to load the context layer"
-            onRetry={() => {
-              connectors.reload()
-              connections.reload()
-            }}
+            error={connections.error}
+            title="Unable to load your connections"
+            onRetry={() => connections.refetch()}
           />
         </Section>
-      ) : loading ? (
+      ) : connections.isPending ? (
         <CardGridSkeleton count={3} />
-      ) : (
-        <div className="space-y-6">
-          <Section
-            title="Connectors"
-            description={
+      ) : list.length === 0 ? (
+        <Section>
+          <EmptyState
+            title="No data source connected yet"
+            body={
               canManage
-                ? 'Choose a warehouse to connect.'
-                : 'Your role can see connections but not create them.'
+                ? 'Start a new connection to choose a warehouse, pick its datasets, and build a context from them. The credential is validated against the warehouse before anything is saved.'
+                : 'Nobody has connected a warehouse for this company yet. Your role can see connections but not create them.'
             }
-          >
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-              {(connectors.data ?? []).map((connector) => {
-                const available = connector.status === 'available'
-                const usable = available && canManage
-                return (
-                  <button
-                    key={connector.id}
-                    type="button"
-                    disabled={!usable}
-                    onClick={() => setConnecting(connector)}
-                    className={cn(
-                      'flex h-full flex-col items-start gap-1.5 rounded-xl border p-4 text-left transition-colors',
-                      'focus-visible:outline-ring focus-visible:outline-2 focus-visible:outline-offset-2',
-                      usable
-                        ? 'border-border bg-card hover:border-primary/40 hover:bg-accent/40'
-                        : 'cursor-not-allowed border-dashed border-border bg-muted/40'
-                    )}
-                  >
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span className="flex items-center gap-2">
-                        <Plug
-                          className={cn(
-                            'size-4',
-                            usable ? 'text-primary' : 'text-muted-foreground/60'
-                          )}
-                          aria-hidden
-                        />
-                        <span
-                          className={cn(
-                            'text-sm font-medium',
-                            usable ? 'text-foreground' : 'text-muted-foreground'
-                          )}
-                        >
-                          {connector.name}
-                        </span>
-                      </span>
-                      {!available && (
-                        <Badge variant="outline" className="text-muted-foreground">
-                          Planned
-                        </Badge>
-                      )}
-                    </span>
-                    <span className="text-xs leading-snug text-muted-foreground">
-                      {connector.description}
-                    </span>
-                  </button>
-                )
-              })}
-            </div>
-          </Section>
-
-          <Section
-            title="Connections"
-            description="Each connection belongs to one company and holds its own credential."
-            flush
-          >
-            {(connections.data ?? []).length === 0 ? (
-              <EmptyState
-                title="No warehouse connected yet"
-                body={
-                  canManage
-                    ? 'Pick a connector above. The credential is checked against the warehouse before it is saved, so a connection on this list is one that worked.'
-                    : 'Nobody has connected a warehouse for this company yet.'
-                }
-                icon={Database}
-                compact
+            icon={Database}
+            action={canManage ? newConnection : undefined}
+          />
+        </Section>
+      ) : (
+        <Section
+          title="Connected sources"
+          description="Each connection belongs to one company and holds its own credential."
+        >
+          <div className="grid gap-3 lg:grid-cols-2">
+            {list.map((connection) => (
+              <ConnectionCard
+                key={connection.id}
+                connection={connection}
+                canManage={canManage}
+                busy={busyId === connection.id}
+                builderPath={paths.contextBuilder(connection.id)}
+                datasetsPath={paths.contextConnection(connection.id)}
+                onVerify={() => void runVerify(connection)}
+                onDelete={() => setDeleting(connection)}
               />
-            ) : (
-              <ul className="divide-y divide-border">
-                {(connections.data ?? []).map((connection) => {
-                  const datasetPath = paths.contextConnection(connection.id)
-                  return (
-                    <li
-                      key={connection.id}
-                      className="flex flex-wrap items-center gap-3 px-5 py-3"
-                    >
-                      <Database
-                        className="size-4 shrink-0 text-muted-foreground"
-                        aria-hidden
-                      />
-                      <span className="min-w-0 flex-1">
-                        <Link
-                          to={datasetPath}
-                          className="block truncate text-sm font-medium text-foreground hover:text-primary"
-                        >
-                          {connection.name}
-                        </Link>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {connection.provider} · {connection.host} · token {connection.secretHint}
-                          {connection.selectedDatasetCount
-                            ? ` · ${connection.selectedDatasetCount} dataset${
-                                connection.selectedDatasetCount === 1 ? '' : 's'
-                              } selected`
-                            : ' · no datasets selected'}
-                        </span>
-                        {connection.status === 'invalid' && connection.lastError && (
-                          <span className="mt-0.5 block text-xs text-destructive">
-                            {connection.lastError}
-                          </span>
-                        )}
-                      </span>
-
-                      <Badge
-                        variant="outline"
-                        className={
-                          connection.status === 'connected'
-                            ? 'border-success/25 bg-success/10 text-success'
-                            : 'border-destructive/25 bg-destructive/10 text-destructive'
-                        }
-                      >
-                        {connection.status === 'connected' ? 'Connected' : 'Not working'}
-                      </Badge>
-
-                      <Button variant="outline" size="sm" onClick={() => navigate(datasetPath)}>
-                        Datasets
-                      </Button>
-
-                      {canManage && (
-                        <>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={busyId === connection.id}
-                            onClick={() => void verify(connection)}
-                          >
-                            <RefreshCw
-                              className={busyId === connection.id ? 'animate-spin' : undefined}
-                              aria-hidden
-                            />
-                            {busyId === connection.id ? 'Checking…' : 'Verify'}
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon-sm"
-                            className="text-destructive hover:text-destructive"
-                            aria-label={`Remove ${connection.name}`}
-                            onClick={() => setDeleting(connection)}
-                          >
-                            <Trash2 aria-hidden />
-                          </Button>
-                        </>
-                      )}
-                    </li>
-                  )
-                })}
-              </ul>
-            )}
-          </Section>
-        </div>
+            ))}
+          </div>
+        </Section>
       )}
 
-      {connecting && (
-        <ConnectDialog
-          connector={connecting}
-          onClose={() => setConnecting(null)}
-          onConnected={(result) => {
-            setConnecting(null)
-
-            /*
-             * Fire-and-forget: the connection is already saved, so a session
-             * failure here must not block the redirect to it. The connection's
-             * own id IS the ADK backend's workspace_id — that service has no
-             * workspaces table of its own (see adk_agents/api/main.py).
-             */
-            createAdkSession(result.connection.id, 'context_layer_extractor').catch((err) => {
-              notify.failure('start the context extraction agent for this connection', err)
-            })
-
-            // Straight to the picker: the datasets were just fetched, and
-            // choosing them is why somebody connected in the first place.
-            navigate(paths.contextConnection(result.connection.id))
-          }}
-        />
-      )}
+      {/*
+        A compact availability strip rather than the full gallery — the gallery
+        is step one of the builder, and repeating it here would mean two places
+        to keep in step. This only answers "what else can I connect".
+      */}
+      {connectors.data ? (
+        <Section
+          title="Connectors"
+          description={`${available.length} available · ${planned.length} planned`}
+        >
+          <div className="flex flex-wrap gap-2">
+            {(connectors.data ?? []).map((connector) => {
+              const presentation = connectorPresentation(connector.id)
+              const usable = isConnectable(connector)
+              return (
+                <span
+                  key={connector.id}
+                  className={cn(
+                    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm',
+                    usable ? 'bg-card' : 'border-dashed bg-muted/40 text-muted-foreground'
+                  )}
+                >
+                  <presentation.icon
+                    className={cn('size-3.5', !usable && 'opacity-60')}
+                    aria-hidden
+                  />
+                  {connector.name}
+                  {usable ? null : (
+                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
+                      Planned
+                    </Badge>
+                  )}
+                </span>
+              )
+            })}
+          </div>
+        </Section>
+      ) : null}
 
       <ConfirmDialog
         open={deleting !== null}
@@ -294,9 +189,129 @@ export default function ContextLayerPage() {
         consequence="The dataset selection goes with it. Nothing in the warehouse is touched, but reconnecting means entering a token again."
         confirmLabel="Remove connection"
         destructive
-        pending={deletePending}
+        pending={remove.isPending}
         onConfirm={confirmDelete}
       />
     </Page>
+  )
+}
+
+function ConnectionCard({
+  connection,
+  canManage,
+  busy,
+  builderPath,
+  datasetsPath,
+  onVerify,
+  onDelete,
+}: {
+  connection: Connection
+  canManage: boolean
+  busy: boolean
+  builderPath: string
+  datasetsPath: string
+  onVerify: () => void
+  onDelete: () => void
+}) {
+  const presentation = connectorPresentation(connection.provider)
+  const connected = connection.status === 'connected'
+  const datasetCount = connection.selectedDatasetCount ?? 0
+
+  return (
+    <article className="flex flex-col rounded-xl border bg-card">
+      <div className="flex items-start gap-3 p-4">
+        <span
+          className={cn(
+            'flex size-9 shrink-0 items-center justify-center rounded-md',
+            presentation.accentClass
+          )}
+        >
+          <presentation.icon className="size-4" aria-hidden />
+        </span>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              to={canManage ? builderPath : datasetsPath}
+              className="truncate text-sm font-medium hover:text-primary"
+            >
+              {connection.name}
+            </Link>
+            <Badge
+              variant="outline"
+              className={
+                connected
+                  ? 'border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300'
+                  : 'border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300'
+              }
+            >
+              {connected ? 'Connected' : 'Not working'}
+            </Badge>
+          </div>
+
+          <p className="mt-0.5 truncate text-xs text-muted-foreground">
+            {connection.host} · {maskSecretHint(connection.secretHint)}
+          </p>
+
+          <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Table2 className="size-3" aria-hidden />
+              <dt className="sr-only">Datasets selected</dt>
+              <dd>
+                {datasetCount > 0
+                  ? `${datasetCount} dataset${datasetCount === 1 ? '' : 's'} selected`
+                  : 'No datasets selected'}
+              </dd>
+            </div>
+            <div>
+              <dt className="sr-only">Last verified</dt>
+              <dd>Verified {formatRelativeTime(connection.lastVerifiedAt)}</dd>
+            </div>
+          </dl>
+
+          {!connected && connection.lastError ? (
+            <p className="mt-1.5 text-xs text-destructive">{connection.lastError}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <footer className="mt-auto flex flex-wrap items-center gap-2 border-t px-4 py-2.5">
+        {/*
+          The builder is gated on `context.manage`, so a read-only account is
+          not offered a button that would land them on a permission refusal.
+          Their primary action is the dataset view instead.
+        */}
+        {canManage ? (
+          <Button asChild size="sm">
+            <Link to={builderPath}>
+              {datasetCount > 0 ? 'Continue building' : 'Build context'}
+              <ArrowRight className="size-4" aria-hidden />
+            </Link>
+          </Button>
+        ) : null}
+
+        <Button asChild size="sm" variant={canManage ? 'outline' : 'default'}>
+          <Link to={datasetsPath}>Datasets</Link>
+        </Button>
+
+        {canManage ? (
+          <>
+            <Button size="sm" variant="outline" disabled={busy} onClick={onVerify}>
+              <RefreshCw className={cn('size-4', busy && 'animate-spin')} aria-hidden />
+              {busy ? 'Checking…' : 'Verify'}
+            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="ml-auto text-destructive hover:text-destructive"
+              aria-label={`Remove ${connection.name}`}
+              onClick={onDelete}
+            >
+              <Trash2 className="size-4" aria-hidden />
+            </Button>
+          </>
+        ) : null}
+      </footer>
+    </article>
   )
 }

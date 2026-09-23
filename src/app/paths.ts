@@ -35,7 +35,13 @@ export interface AppPaths {
   readonly data: string
 
   /* Intelligence */
+  /** The Context Layer landing: the connections this company already has. */
   readonly context: string
+  /**
+   * The seven-step builder. Called with a connection id to resume an existing
+   * one, and without to start from Connect.
+   */
+  contextBuilder(connectionId?: string): string
   contextConnection(connectionId: string): string
   agent(sessionId?: string): string
   dataAnalyst(sessionId?: string): string
@@ -71,6 +77,10 @@ const PLATFORM: AppPaths = {
   data: '/platform/data',
 
   context: '/platform/context',
+  contextBuilder: (id) =>
+    id
+      ? `/platform/context/builder?connection=${encodeURIComponent(id)}`
+      : '/platform/context/builder',
   contextConnection: (id) => `/platform/context/connections/${encodeURIComponent(id)}`,
   agent: (sessionId) => (sessionId ? `/platform/agent/${encodeURIComponent(sessionId)}` : '/platform/agent'),
   dataAnalyst: (sessionId) =>
@@ -108,6 +118,8 @@ const WORKSPACE: AppPaths = {
   data: '/data',
 
   context: '/context',
+  contextBuilder: (id) =>
+    id ? `/context/builder?connection=${encodeURIComponent(id)}` : '/context/builder',
   contextConnection: (id) => `/context/connections/${encodeURIComponent(id)}`,
   agent: (sessionId) => (sessionId ? `/agent/${encodeURIComponent(sessionId)}` : '/agent'),
   dataAnalyst: (sessionId) =>

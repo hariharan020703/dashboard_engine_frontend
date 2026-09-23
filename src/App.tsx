@@ -33,6 +33,7 @@ import GroupsPage from '@/pages/workspace/GroupsPage'
 import AccessPage from '@/pages/workspace/AccessPage'
 import CompanySettingsPage from '@/pages/workspace/CompanySettingsPage'
 
+import ContextLayerBuilderPage from '@/modules/context-layer/ContextLayerBuilderPage'
 import ContextLayerPage from '@/modules/context-layer/ContextLayerPage'
 import ConnectionDatasetsPage from '@/modules/context-layer/ConnectionDatasetsPage'
 import { CommandCenterPage } from '@/modules/data-analyst-agent/pages/CommandCenterPage'
@@ -186,6 +187,14 @@ export default function App() {
                 }
               />
               <Route
+                path="context/builder"
+                element={
+                  <RequirePermission permission="context.manage">
+                    <ContextLayerBuilderPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
                 path="context/connections/:id"
                 element={
                   <RequirePermission permission="context.read">
@@ -242,6 +251,14 @@ export default function App() {
                 element={
                   <RequirePermission permission="context.read">
                     <ContextLayerPage />
+                  </RequirePermission>
+                }
+              />
+              <Route
+                path="/context/builder"
+                element={
+                  <RequirePermission permission="context.manage">
+                    <ContextLayerBuilderPage />
                   </RequirePermission>
                 }
               />
