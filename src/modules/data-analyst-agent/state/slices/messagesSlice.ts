@@ -70,7 +70,14 @@ export const sendMessage = createAsyncThunk(
     { dispatch }
   ) => {
     const basePath = basePathFor(args.scope)
-    const response = await fetch(`${API_BASE_URL}${basePath}`, {
+    /*
+     * A trailing slash on VITE_AGENT_API_BASE_URL (e.g. "http://localhost:8000/")
+     * plus this always-leading-slash basePath would double up into ".../ /messages",
+     * a 404 on a plain dev uvicorn server. `apiClient` (axios, used everywhere else
+     * in this file) normalises that on its own; this is the one raw `fetch` call
+     * that doesn't go through it, so it normalises here instead.
+     */
+    const response = await fetch(`${API_BASE_URL.replace(/\/+$/, "")}${basePath}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({

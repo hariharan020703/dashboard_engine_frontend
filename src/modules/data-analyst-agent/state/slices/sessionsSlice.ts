@@ -52,6 +52,20 @@ export const fetchAllSessions = createAsyncThunk(
   }
 )
 
+/**
+ * Just the plain analyst chats — the history list on the Data Analyst page.
+ * Deliberately narrower than `fetchAllSessions`: that one also pulls in
+ * Playbook Builder sessions, which have nothing to do with "past chats" on
+ * this page and would show up mixed in if reused here.
+ */
+export const fetchAnalystSessions = createAsyncThunk(
+  "sessions/fetchAnalystSessions",
+  async (userId: string) => {
+    const sessions = await fetchSessionList("/sessions", userId)
+    return [...sessions].sort((a, b) => b.lastUpdateTime - a.lastUpdateTime)
+  }
+)
+
 export const findBuilderSessionForSandboxFile = createAsyncThunk(
   "sessions/findBuilderSessionForSandboxFile",
   async (args: { userId: string; fileName: string }) => {
@@ -178,6 +192,16 @@ const sessionsSlice = createSlice({
         state.all = action.payload
       })
       .addCase(fetchAllSessions.rejected, (state) => {
+        state.allStatus = "error"
+      })
+      .addCase(fetchAnalystSessions.pending, (state) => {
+        state.allStatus = "loading"
+      })
+      .addCase(fetchAnalystSessions.fulfilled, (state, action) => {
+        state.allStatus = "success"
+        state.all = action.payload
+      })
+      .addCase(fetchAnalystSessions.rejected, (state) => {
         state.allStatus = "error"
       })
       .addCase(fetchSession.pending, (state) => {

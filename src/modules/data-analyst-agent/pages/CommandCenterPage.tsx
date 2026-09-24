@@ -10,11 +10,15 @@ import {
   Info,
   Loader2,
   MessageCircle,
+  MessageSquarePlus,
   Paperclip,
   Pencil,
+  Trash2,
 } from "lucide-react"
 import ChatBalloon from "@/modules/data-analyst-agent/assets/chat-balloon.png"
 
+import { usePaths } from "@/app/usePaths"
+import { cn } from "@/modules/data-analyst-agent/lib/utils"
 import { Button } from "@/modules/data-analyst-agent/ui/button"
 import { FileUploadDialog } from "@/modules/data-analyst-agent/dialogs/file-upload-dialog"
 import { Input } from "@/modules/data-analyst-agent/ui/input"
@@ -24,10 +28,13 @@ import { useAppDispatch, useAppSelector, useAgentUserId } from "@/modules/data-a
 import {
   createBuilderSession,
   createSession,
+  fetchAnalystSessions,
   fetchBuilderSession,
   fetchSession,
   findBuilderSessionForSandboxFile,
+  removeSession,
   sessionCleared,
+  type Session,
 } from "@/modules/data-analyst-agent/state/slices/sessionsSlice"
 import {
   fetchMessages,
@@ -72,6 +79,16 @@ export function CommandCenterPage({
   const { id } = useParams<{ id?: string }>()
   const navigate = useNavigate()
   const location = useLocation()
+  const paths = usePaths()
+  /*
+   * Analyst mode is mounted at two addresses that render the exact same
+   * chat against the exact same backend (`/agent` for the sandbox-test flow
+   * Playbooks navigates to by a hardcoded path, `/data-analyst` for the
+   * sidebar's own link) - the redirect below has to land back on whichever
+   * one the visitor is actually on, or sending a first message would bounce
+   * a /data-analyst visitor over to /agent mid-conversation.
+   */
+  const isDataAnalystRoute = !isBuilder && location.pathname.includes('/data-analyst')
   const dispatch = useAppDispatch()
   const userId = useAgentUserId()
   const [message, setMessage] = React.useState("")
@@ -94,6 +111,46 @@ export function CommandCenterPage({
   const conversationMarkerRef = React.useRef<HTMLDivElement>(null)
   const hasScrolledToConversationRef = React.useRef(false)
   const skipNextHistoryFetchRef = React.useRef<string | null>(null)
+
+  /*
+   * Chat history — the past sessions list in the sidebar below. Analyst mode
+   * only: Playbook Builder has its own session concept (a draft playbook),
+   * not a chat to resume, so this list stays out of that mode entirely.
+   * `state.all` is refreshed by this dispatch alone; `createSession` and
+   * `removeSession` below already keep it in sync on their own (see
+   * sessionsSlice's extraReducers), so neither needs a follow-up refetch.
+   */
+  const sessionHistory = useAppSelector((state) => state.sessions.all)
+  const sessionHistoryStatus = useAppSelector((state) => state.sessions.allStatus)
+  React.useEffect(() => {
+    if (isBuilder || !userId) return
+    dispatch(fetchAnalystSessions(userId))
+  }, [isBuilder, userId, dispatch])
+  // Sandbox-test runs are their own thing (see the banner above) - they
+  // would otherwise clutter a list meant for "chats I can come back to".
+  const chatHistory = React.useMemo(
+    () => sessionHistory.filter((entry) => !entry.state?.is_sandbox_test),
+    [sessionHistory]
+  )
+  const [deletingSessionId, setDeletingSessionId] = React.useState<string | null>(null)
+
+  const basePath = (sessionId?: string) =>
+    isDataAnalystRoute ? paths.dataAnalyst(sessionId) : paths.agent(sessionId)
+
+  const handleNewChat = () => navigate(basePath())
+
+  const handleDeleteSession = async (session: Session) => {
+    if (deletingSessionId) return
+    setDeletingSessionId(session.id)
+    try {
+      await dispatch(removeSession({ sessionId: session.id, userId })).unwrap()
+      if (session.id === id) navigate(basePath())
+    } catch {
+      toast.error("Couldn't delete that chat.")
+    } finally {
+      setDeletingSessionId(null)
+    }
+  }
 
   React.useEffect(() => {
     hasScrolledToConversationRef.current = false
@@ -132,9 +189,7 @@ export function CommandCenterPage({
         sessionId = newSession.id
         skipNextHistoryFetchRef.current = newSession.id
         navigate(
-          isBuilder
-            ? `/playbook-builder/${newSession.id}`
-            : `/agent/${newSession.id}`,
+          isBuilder ? `/playbook-builder/${newSession.id}` : basePath(newSession.id),
           { replace: true }
         )
       } catch {
@@ -323,7 +378,79 @@ export function CommandCenterPage({
   }, [messages, isSending, showPlaybookPanel, historyStatus])
 
   return (
-    <div className="agent-workbench flex h-full flex-col bg-background text-sm leading-loose">
+    <div className="agent-workbench flex h-full bg-background text-sm leading-loose">
+      {!isBuilder && (
+        <aside className="hidden w-56 shrink-0 flex-col border-r bg-card sm:flex">
+          <div className="p-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="w-full cursor-pointer gap-1.5"
+              onClick={handleNewChat}
+            >
+              <MessageSquarePlus className="size-3.5" />
+              New chat
+            </Button>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto px-2 pb-2">
+            {sessionHistoryStatus === "loading" && chatHistory.length === 0 ? (
+              <div className="flex flex-col gap-1.5 p-2">
+                <Skeleton className="h-7 w-full rounded-md" />
+                <Skeleton className="h-7 w-full rounded-md" />
+                <Skeleton className="h-7 w-full rounded-md" />
+              </div>
+            ) : chatHistory.length === 0 ? (
+              <p className="px-2 py-3 text-xs text-muted-foreground">No chats yet.</p>
+            ) : (
+              <ul className="flex flex-col gap-0.5">
+                {chatHistory.map((entry) => {
+                  const active = entry.id === id
+                  const label =
+                    typeof entry.state?.playbook_name === "string"
+                      ? entry.state.playbook_name
+                      : new Date(entry.lastUpdateTime * 1000).toLocaleString(undefined, {
+                          month: "short",
+                          day: "numeric",
+                          hour: "numeric",
+                          minute: "2-digit",
+                        })
+                  return (
+                    <li key={entry.id} className="group flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => navigate(basePath(entry.id))}
+                        className={cn(
+                          "flex-1 truncate rounded-md px-2 py-1.5 text-left text-xs transition-colors",
+                          active
+                            ? "bg-accent text-accent-foreground"
+                            : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                        )}
+                      >
+                        {label}
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Delete chat"
+                        disabled={deletingSessionId === entry.id}
+                        onClick={() => void handleDeleteSession(entry)}
+                        className="cursor-pointer rounded-md p-1.5 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100 disabled:opacity-100"
+                      >
+                        {deletingSessionId === entry.id ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-3.5" />
+                        )}
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+          </div>
+        </aside>
+      )}
+      <div className="flex min-h-0 flex-1 flex-col">
       {isSandboxTest && (
         <div className="flex shrink-0 items-center justify-between gap-2 border-b bg-card px-6 py-2.5">
           <div className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
@@ -571,6 +698,7 @@ export function CommandCenterPage({
             </Button>
           </form>
         )}
+      </div>
       </div>
       <FileUploadDialog
         open={fileDialogOpen}

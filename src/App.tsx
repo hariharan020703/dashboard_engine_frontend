@@ -37,7 +37,6 @@ import ContextLayerBuilderPage from '@/modules/context-layer/ContextLayerBuilder
 import ContextLayerPage from '@/modules/context-layer/ContextLayerPage'
 import ConnectionDatasetsPage from '@/modules/context-layer/ConnectionDatasetsPage'
 import { CommandCenterPage } from '@/modules/data-analyst-agent/pages/CommandCenterPage'
-import { AnalystChatPage } from '@/modules/data-analyst-agent/pages/AnalystChatPage'
 import { PlaybooksPage } from '@/modules/data-analyst-agent/pages/PlaybooksPage'
 
 /**
@@ -203,7 +202,7 @@ export default function App() {
                 }
               />
               <Route path="agent/:id?" element={<CommandCenterPage mode="analyst" />} />
-              <Route path="data-analyst/:id?" element={<AnalystChatPage />} />
+              <Route path="data-analyst/:id?" element={<CommandCenterPage mode="analyst" />} />
               <Route path="playbook-builder/:id?" element={<CommandCenterPage mode="builder" />} />
               <Route path="playbooks" element={<PlaybooksPage />} />
 
@@ -271,7 +270,7 @@ export default function App() {
                 }
               />
               <Route path="/agent/:id?" element={<CommandCenterPage mode="analyst" />} />
-              <Route path="/data-analyst/:id?" element={<AnalystChatPage />} />
+              <Route path="/data-analyst/:id?" element={<CommandCenterPage mode="analyst" />} />
               <Route path="/playbook-builder/:id?" element={<CommandCenterPage mode="builder" />} />
               <Route path="/playbooks" element={<PlaybooksPage />} />
 

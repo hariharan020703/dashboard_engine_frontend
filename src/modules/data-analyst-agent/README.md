@@ -5,30 +5,29 @@ backend). Pages live here:
 
 | Route | Page | Purpose |
 |---|---|---|
-| `/data-analyst/:id?` (`/platform/data-analyst/:id?`) | `pages/AnalystChatPage.tsx` | The Data Analyst chat, on the **ADK Agent Runtime API** (see "Two backends" below). This is what the sidebar's "Data analyst" link opens. |
-| `/agent/:id?` (`/platform/agent/:id?`) | `pages/CommandCenterPage.tsx` (`mode="analyst"`) | The older ad-hoc chat, on the Mojo backend. Not linked from the sidebar any more — kept only because Playbooks' "Test"/"Run" flow still navigates here (a sandbox-test session, flagged by `session.state.is_sandbox_test`, needs this component's sandbox banner/Edit/Promote UI). |
+| `/data-analyst/:id?` (`/platform/data-analyst/:id?`) | `pages/CommandCenterPage.tsx` (`mode="analyst"`) | The Data Analyst chat. What the sidebar's "Data analyst" link opens. |
+| `/agent/:id?` (`/platform/agent/:id?`) | `pages/CommandCenterPage.tsx` (`mode="analyst"`) | The exact same component and mode, at its older address. Not linked from the sidebar any more, but kept mounted because Playbooks' "Test"/"Run" flow still hard-navigates here (a sandbox-test session, flagged by `session.state.is_sandbox_test`, needs this component's sandbox banner/Edit/Promote UI) — see `handleTestPlaybook` inside `CommandCenterPage.tsx` and `PlaybooksPage.tsx`. |
 | `/playbook-builder/:id?` (`/platform/playbook-builder/:id?`) | `pages/CommandCenterPage.tsx` (`mode="builder"`) | Chat-driven playbook creation/editing. |
 | `/playbooks` (`/platform/playbooks`) | `pages/PlaybooksPage.tsx` | Playbook list — run, edit, delete, promote from sandbox. |
 
-## Two backends
+Analyst mode being mounted at two addresses is why its own "start a new
+chat" redirect (in `submitMessage`, once the first message creates a
+session) checks `location.pathname` for `/data-analyst` before deciding
+whether to land back on `/data-analyst/:id` or `/agent/:id` — otherwise a
+`/data-analyst` visitor's first message would silently bounce them over to
+`/agent` mid-conversation. `paths.dataAnalyst()`/`paths.agent()` (both
+shell-aware) do the actual path-building; the builder-mode and sandbox-test
+redirects elsewhere in the same file still use bare literal strings, an
+existing inconsistency this change did not touch.
 
-This module now talks to **two** unrelated agent services:
-
-- The **Mojo Analyst Agent** (below) — Playbook Builder, Playbooks, and the
-  legacy `/agent` sandbox-test route. Unchanged.
-- The **ADK Agent Runtime API** (`src/api/adkAgentApi.ts`, a top-level API
-  module, not under `state/` — it has no Redux dependency and the
-  context-layer module calls it too) — the Data Analyst chat at
-  `/data-analyst`. Its sessions are scoped by `workspace_id`, which is a
-  context-layer `Connection`'s id (that backend has no separate workspace
-  concept — see `adk_agents/api/main.py`'s docstring in the
-  `elze_data_exploration_agent` repo). `state/useAnalystChat.ts` is the hook
-  behind `AnalystChatPage`: it resolves this company's connected warehouse,
-  lazily creates a session on the first message or upload, and streams
-  responses over SSE. It intentionally does not use this module's Redux
-  store — there is nothing here for it to share with Playbook Builder, and
-  reusing the old session/message slices would have meant bolting a second,
-  incompatible response shape onto them.
+An earlier version of this page (`AnalystChatPage.tsx` / `state/
+useAnalystChat.ts`, since removed) pointed `/data-analyst` at a different
+backend entirely — the ADK Agent Runtime API (`src/api/adkAgentApi.ts`,
+still used by the context-layer module for its extraction agent, just not
+for this chat any more). That backend has no playbooks/sandbox concept at
+all, which is exactly why it couldn't also serve `/agent`'s sandbox-test
+flow — hence the switch back to one shared component for both addresses,
+both on the Mojo backend below.
 
 ## Why this looks different from the rest of the app
 
@@ -98,9 +97,7 @@ var is unset.
 - Nav: `src/app/navigation.ts`'s `Intelligence` group, both consoles ("Data
   analyst" now points at `paths.dataAnalyst()` / `/data-analyst`, and
   "Playbooks").
-- Redux: `<Provider store={agentStore}>` wraps the whole app in `src/main.tsx`
-  — still only backs Playbook Builder/Playbooks; `AnalystChatPage` uses plain
-  React state instead (see "Two backends" above).
+- Redux: `<Provider store={agentStore}>` wraps the whole app in `src/main.tsx`.
 - Theming: `theme.css` imported from `src/index.css`.
 
 No `RequirePermission` guard yet on any of these routes, same as before —
