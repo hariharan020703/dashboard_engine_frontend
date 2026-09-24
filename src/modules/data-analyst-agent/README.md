@@ -71,13 +71,26 @@ any of this to work — that's a backend-side config change outside this repo.
 
 ## User identity
 
-The agent backend has no auth of its own — every call just passes a
-`user_id` string used to scope playbooks/sessions. Rather than port the
-source app's dev/test user-switcher (a `GET /users` roster + localStorage),
-`state/hooks.ts`'s `useAgentUserId()` bridges this app's real authenticated
-user (`useAuth().user.id`) into that role. This assumes the agent backend
-accepts arbitrary ids rather than only ones already in its roster — if calls
-start failing on `user_id`, that's a backend fix, not a frontend one.
+The Mojo Analyst Agent has no auth of its own, but it is NOT arbitrary-id
+tolerant either — it has its own fixed roster (`GET /users`: Deep Blue,
+Exxon, Sterling, each a GUID `userid`), and every call scopes playbooks/
+sessions by that same id (playbooks live under a `playbooks/{user_id}/` GCS
+prefix). Bridging this app's own numeric `user.id` into that role (what this
+used to do) sends an id the Mojo backend has never seen.
+
+`state/hooks.ts`'s `useAgentUserId()` currently returns one hardcoded,
+seeded id (`"42af3369-6ed7-441d-ba61-a378399c5ba4"`, "Exxon") for every
+dashboard account — a temporary trade-off until dashboard accounts are
+mapped to Mojo users one-for-one, which does not exist yet. Every dashboard
+user sees the same Mojo playbooks/sessions until that mapping is built.
+
+Separately: a `500` from this backend on `/playbooks` or similar is not
+necessarily a `user_id` problem — `services/playbooks.py` reads/writes
+Google Cloud Storage, and a missing `PLAYBOOKS_GCS_BUCKET` (or bad
+`GOOGLE_APPLICATION_CREDENTIALS`) fails exactly the same way, for every
+user_id, real or not. Confirmed by hand: `GET /playbooks?user_id=<any
+value, including a real one from /users>` 500s identically when that env
+var is unset.
 
 ## Already wired
 
