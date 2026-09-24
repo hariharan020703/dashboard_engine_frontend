@@ -5,8 +5,8 @@ import type { AxiosError, AxiosInstance, AxiosRequestConfig, InternalAxiosReques
  * The application's only HTTP transport.
  *
  * Every call the frontend makes goes through this axios instance, so the things
- * that must happen on every request happen in one place: the bearer token, the
- * CSRF header, unwrapping the API's envelope, and renewing an expired session
+ * that must happen on every request happen in one place: the session cookies,
+ * the CSRF header, unwrapping the API's envelope, and renewing an expired session
  * before the caller ever sees a 401.
  *
  * Callers get plain data or an ApiError. They never see an axios response, an
@@ -70,22 +70,14 @@ interface ErrorEnvelope {
 /* ------------------------------------------------------------ session state --- */
 
 /**
- * The access token lives in a module variable, not in localStorage.
+ * This module holds no token, and neither does anything else in the app.
  *
- * Storage that survives a tab survives an XSS too, and a token read out of it
- * is a session an attacker keeps. Holding it in memory means the worst case is
- * bounded by the page's own lifetime; the refresh cookie, which the script
- * cannot read at all, is what survives a reload.
+ * The access and refresh tokens are HttpOnly cookies (da_access, da_refresh):
+ * the browser attaches them, and no script - ours or an injected one - can
+ * read them. The backend never puts a token in a response body, so there is
+ * nothing here to store, attach or leak. The one value script does read is the
+ * CSRF cookie, which proves a request came from this page, not a session.
  */
-let accessToken: string | null = null
-
-export function setAccessToken(token: string | null): void {
-  accessToken = token
-}
-
-export function hasAccessToken(): boolean {
-  return accessToken !== null
-}
 
 const CSRF_COOKIE = 'da_csrf'
 
@@ -119,7 +111,7 @@ export function setSessionLostHandler(handler: ((reason: SessionLostReason) => v
  */
 export const http: AxiosInstance = axios.create({
   baseURL: '/api',
-  // The refresh cookie is HttpOnly and same-origin; this makes it travel.
+  // The session cookies are HttpOnly and same-origin; this makes them travel.
   withCredentials: true,
   headers: { 'Content-Type': 'application/json' },
 })
@@ -141,9 +133,8 @@ declare module 'axios' {
 }
 
 http.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (accessToken) config.headers.set('Authorization', `Bearer ${accessToken}`)
-
-  // Needed on /auth so the refresh cookie is accepted; harmless elsewhere.
+  // Required on every state-changing request: the session is a cookie, so the
+  // backend needs proof the request came from this page. Harmless on reads.
   const token = csrfToken()
   if (token) config.headers.set('X-CSRF-Token', token)
 
@@ -173,14 +164,14 @@ async function refreshSession(): Promise<boolean> {
       // Deliberately a bare axios call, not `http`: going through the instance
       // would re-enter the response interceptor below, and a failing refresh
       // would try to refresh itself.
-      const res = await axios.post<SuccessEnvelope<{ accessToken: string }>>(
+      // Success means the backend wrote fresh session cookies; there is
+      // nothing in the body to keep.
+      const res = await axios.post<SuccessEnvelope<unknown>>(
         '/api/auth/refresh',
         undefined,
         { headers: { 'X-CSRF-Token': token }, withCredentials: true }
       )
-      if (!res.data?.success || !res.data.data?.accessToken) return false
-      accessToken = res.data.data.accessToken
-      return true
+      return res.data?.success === true
     } catch {
       return false
     } finally {
@@ -259,7 +250,6 @@ http.interceptors.response.use(
         config.retriedAfterRenewal = true
         return http.request(config)
       }
-      accessToken = null
       onSessionLost?.('expired')
       throw envelopeError(data, status)
     }
@@ -274,7 +264,6 @@ http.interceptors.response.use(
       renewOnExpiry &&
       (apiError.code === 'ACCOUNT_DISABLED' || apiError.code === 'COMPANY_DISABLED')
     ) {
-      accessToken = null
       onSessionLost?.('disabled')
     }
 

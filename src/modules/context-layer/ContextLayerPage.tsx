@@ -1,6 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { ArrowRight, Database, Plus, RefreshCw, Table2, Trash2 } from 'lucide-react'
+import {
+  ArrowRight,
+  Database,
+  MoreHorizontal,
+  Pencil,
+  Plug,
+  Plus,
+  RefreshCw,
+  Table2,
+  Trash2,
+} from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
 import { Page, PageHeader, Section } from '@/components/common/Page'
@@ -9,21 +19,33 @@ import { CardGridSkeleton, EmptyState, ErrorState } from '@/components/common/St
 import { notify } from '@/components/common/notify'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { cn } from '@/lib/utils'
 import { ContextQueryProvider } from './queries/QueryProvider'
-import { useConnections, useConnectors, useDeleteConnection, useVerifyConnection } from './queries/hooks'
+import { useConnections, useDeleteConnection, useVerifyConnection } from './queries/hooks'
 import { VersionBadge } from './components/VersionBadge'
-import { connectorPresentation, isConnectable } from './connectors/registry'
+import { McpDetailsDialog } from './components/McpDetailsDialog'
+import { connectorPresentation } from './connectors/registry'
 import { formatRelativeTime, maskSecretHint } from './components/format'
 import type { Connection } from './types'
 
 /**
  * The Context Layer landing: the data sources this company has connected.
  *
- * This is what the sidebar's "Context layer" opens, and it answers one
- * question — what is already connected, and is it still working. Building a
- * context is a separate, longer task, so it lives behind "New connection" in
- * the seven-step builder rather than being unfolded here.
+ * This is what the sidebar's "Context layer" opens, and it answers two
+ * questions, in two sections: what is being built (drafts, and connections with
+ * nothing built yet), and what is live (published contexts, each with how an
+ * MCP client connects to it). A connection whose v2 is being edited appears in
+ * both - it is still serving v1 meanwhile. Building a context is a separate,
+ * longer task, so it lives behind "New connection" in the seven-step builder
+ * rather than being unfolded here. The connector catalogue is step one of that
+ * builder and is not repeated here.
  *
  * Connecting happens in the builder's first step and nowhere else. There used
  * to be a second connect dialog on this page; two forms for one credential is
@@ -49,11 +71,11 @@ function ConnectionsLanding() {
   const canManage = can('context.manage')
 
   const connections = useConnections()
-  const connectors = useConnectors()
   const verify = useVerifyConnection()
   const remove = useDeleteConnection()
 
   const [deleting, setDeleting] = useState<Connection | null>(null)
+  const [mcpFor, setMcpFor] = useState<Connection | null>(null)
   const [busyId, setBusyId] = useState<string | null>(null)
 
   const runVerify = async (connection: Connection) => {
@@ -87,8 +109,10 @@ function ConnectionsLanding() {
   )
 
   const list = connections.data ?? []
-  const available = (connectors.data ?? []).filter(isConnectable)
-  const planned = (connectors.data ?? []).filter((c) => !isConnectable(c))
+  // Work in progress: an open draft, or nothing published yet.
+  const drafts = list.filter((c) => !c.published || c.context?.status === 'draft')
+  // What is live.
+  const published = list.filter((c) => c.published)
 
   return (
     <Page>
@@ -122,65 +146,60 @@ function ConnectionsLanding() {
           />
         </Section>
       ) : (
-        <Section
-          title="Connected sources"
-          description="Each connection belongs to one company and holds its own credential."
-        >
-          <div className="grid gap-3 lg:grid-cols-2">
-            {list.map((connection) => (
-              <ConnectionCard
-                key={connection.id}
-                connection={connection}
-                canManage={canManage}
-                busy={busyId === connection.id}
-                builderPath={paths.contextBuilder(connection.id)}
-                datasetsPath={paths.contextConnection(connection.id)}
-                onVerify={() => void runVerify(connection)}
-                onDelete={() => setDeleting(connection)}
-              />
-            ))}
-          </div>
-        </Section>
+        <>
+          <Section
+            title="Drafts"
+            description="Contexts being built. Nothing here is served until it is published."
+          >
+            {drafts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                No drafts in progress. Edit a published context below to start its next version.
+              </p>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {drafts.map((connection) => (
+                  <ConnectionCard
+                    key={connection.id}
+                    connection={connection}
+                    canManage={canManage}
+                    busy={busyId === connection.id}
+                    builderPath={paths.contextBuilder(connection.id)}
+                    datasetsPath={paths.contextConnection(connection.id)}
+                    onVerify={() => void runVerify(connection)}
+                    onDelete={() => setDeleting(connection)}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section
+            title="Published"
+            description="Live contexts. Use the menu on a card for its MCP connection details."
+          >
+            {published.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                Nothing published yet. Finish a draft’s Publish step and it appears here.
+              </p>
+            ) : (
+              <div className="grid gap-3 lg:grid-cols-2">
+                {published.map((connection) => (
+                  <PublishedCard
+                    key={connection.id}
+                    connection={connection}
+                    canManage={canManage}
+                    builderPath={paths.contextBuilder(connection.id)}
+                    datasetsPath={paths.contextConnection(connection.id)}
+                    onMcp={() => setMcpFor(connection)}
+                  />
+                ))}
+              </div>
+            )}
+          </Section>
+        </>
       )}
 
-      {/*
-        A compact availability strip rather than the full gallery — the gallery
-        is step one of the builder, and repeating it here would mean two places
-        to keep in step. This only answers "what else can I connect".
-      */}
-      {connectors.data ? (
-        <Section
-          title="Connectors"
-          description={`${available.length} available · ${planned.length} planned`}
-        >
-          <div className="flex flex-wrap gap-2">
-            {(connectors.data ?? []).map((connector) => {
-              const presentation = connectorPresentation(connector.id)
-              const usable = isConnectable(connector)
-              return (
-                <span
-                  key={connector.id}
-                  className={cn(
-                    'inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm',
-                    usable ? 'bg-card' : 'border-dashed bg-muted/40 text-muted-foreground'
-                  )}
-                >
-                  <presentation.icon
-                    className={cn('size-3.5', !usable && 'opacity-60')}
-                    aria-hidden
-                  />
-                  {connector.name}
-                  {usable ? null : (
-                    <Badge variant="outline" className="text-[10px] text-muted-foreground">
-                      Planned
-                    </Badge>
-                  )}
-                </span>
-              )
-            })}
-          </div>
-        </Section>
-      ) : null}
+      <McpDetailsDialog connection={mcpFor} onOpenChange={(open) => !open && setMcpFor(null)} />
 
       <ConfirmDialog
         open={deleting !== null}
@@ -329,6 +348,86 @@ function ConnectionCard({
           </>
         ) : null}
       </footer>
+    </article>
+  )
+}
+
+/**
+ * A published context: what is live, and how to reach it. The ⋯ menu holds the
+ * MCP connection details (the reason this card exists) and the ways back into
+ * the connection.
+ */
+function PublishedCard({
+  connection,
+  canManage,
+  builderPath,
+  datasetsPath,
+  onMcp,
+}: {
+  connection: Connection
+  canManage: boolean
+  builderPath: string
+  datasetsPath: string
+  onMcp: () => void
+}) {
+  const presentation = connectorPresentation(connection.provider)
+  const live = connection.published!
+  const editing = connection.context?.status === 'draft'
+
+  return (
+    <article className="flex items-start gap-3 rounded-xl border bg-card p-4">
+      <span
+        className={cn(
+          'flex size-9 shrink-0 items-center justify-center rounded-md',
+          presentation.accentClass
+        )}
+      >
+        <presentation.icon className="size-4" aria-hidden />
+      </span>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-sm font-medium">{connection.name}</span>
+          <VersionBadge status="published" label={live.label} />
+        </div>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {live.name}
+          {live.publishedAt ? ` · published ${formatRelativeTime(live.publishedAt)}` : ''}
+        </p>
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
+          {connection.host}
+          {editing && connection.context ? ` · ${connection.context.label} in progress` : ''}
+        </p>
+      </div>
+
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button variant="ghost" size="icon-sm" aria-label={`Options for ${connection.name}`}>
+            <MoreHorizontal aria-hidden />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="w-56">
+          <DropdownMenuItem onSelect={onMcp}>
+            <Plug aria-hidden />
+            MCP connection details
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          {canManage ? (
+            <DropdownMenuItem asChild>
+              <Link to={builderPath}>
+                <Pencil aria-hidden />
+                {editing ? 'Continue the draft' : 'Edit context'}
+              </Link>
+            </DropdownMenuItem>
+          ) : null}
+          <DropdownMenuItem asChild>
+            <Link to={datasetsPath}>
+              <Table2 aria-hidden />
+              Datasets
+            </Link>
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </article>
   )
 }

@@ -26,10 +26,12 @@ export type AuthStatus =
   | 'SESSION_EXPIRED'
   | 'ACCOUNT_DISABLED'
 
+/**
+ * What login, activation and password change return. Deliberately no token:
+ * the session is set as HttpOnly cookies, which script cannot read.
+ */
 export interface SessionResponse {
-  accessToken: string
   expiresIn: number
-  csrfToken: string
   state: 'AUTHENTICATED' | 'PASSWORD_CHANGE_REQUIRED'
   user: AuthUser
 }
@@ -46,16 +48,12 @@ export interface AccessibleDashboard {
 export interface Profile {
   state: 'AUTHENTICATED' | 'PASSWORD_CHANGE_REQUIRED'
   user: AuthUser
-  scopes: Record<string, string[]>
-  scopesEnforced: boolean
   dashboards: AccessibleDashboard[]
 }
 
 export interface SessionSummary {
   familyId: string
-  startedAt: string
   lastUsedAt: string
-  expiresAt: string
   current: boolean
 }
 

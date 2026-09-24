@@ -7,6 +7,7 @@ import type {
   Connector,
   ContextSettings,
   ContextVersionState,
+  Understanding,
   WorkflowStepId,
   CreatedConnection,
   ModelGraph,
@@ -22,9 +23,11 @@ import type {
   TableProfile,
   WarehouseDataset,
   DatasetListing,
+  GlossaryQuery,
+  ReviewQuery,
 } from '../types'
 import type { ExtractionResult } from '../api/extractionApi'
-import type { ContextObjects } from '../api/contextObjectsApi'
+import type { ContextObjects, ContextObjectsQuery } from '../api/contextObjectsApi'
 
 /**
  * Every server read and write the Context Layer performs.
@@ -106,9 +109,13 @@ export function useTrackStep(connectionId: string | null) {
   })
 }
 
-/** Everything that changes the draft also changes what the version badge says. */
+/**
+ * Everything that changes the draft also changes what the version badge says,
+ * and every fact change is a change to the glossary Understand shows.
+ */
 function invalidateVersions(qc: QueryClient, connectionId: string | null) {
   qc.invalidateQueries({ queryKey: contextKeys.versions(connectionId ?? '') })
+  qc.invalidateQueries({ queryKey: contextKeys.understanding(connectionId ?? '') })
   qc.invalidateQueries({ queryKey: contextKeys.connections(), exact: true })
 }
 
@@ -351,19 +358,41 @@ export function useRunExtraction(connectionId: string | null) {
  * than parsed out of that prose, so the screen shows what was actually
  * recorded rather than what the agent said it recorded.
  */
-export function useContextObjects(connectionId: string | null, enabled = true) {
-  const qc = useQueryClient()
+/** The first page of facts, unfiltered - what the Understand step opens on. */
+export const DEFAULT_FACTS_QUERY: ContextObjectsQuery = { page: 1, pageSize: 25 }
+
+/** One page of a run's facts. Read through Node in either extraction mode. */
+export function useContextObjects(
+  connectionId: string | null,
+  query: ContextObjectsQuery = DEFAULT_FACTS_QUERY,
+  enabled = true
+) {
   return useQuery<ContextObjects>({
-    queryKey: contextKeys.contextObjects(connectionId ?? ''),
-    queryFn: async () =>
-      (await extractionMode(qc)) === 'demo'
-        ? contextApi.contextObjects.fetchNodeContextObjects(connectionId!)
-        : contextApi.contextObjects.fetchContextObjects(connectionId!),
+    queryKey: [...contextKeys.contextObjects(connectionId ?? ''), query],
+    queryFn: () => contextApi.contextObjects.fetchContextObjects(connectionId!, query),
     enabled: Boolean(connectionId) && enabled,
     staleTime: 60_000,
-    // Only reachable when that service is running; a retry storm against one
-    // that simply is not up helps nobody.
+    // The previous page stays on screen while the next one loads.
+    placeholderData: (prev) => prev,
     retry: false,
+  })
+}
+
+/** The glossary's opening view: every term, first page. */
+export const DEFAULT_GLOSSARY_QUERY: GlossaryQuery = { filter: 'all', page: 1, pageSize: 10 }
+
+/** The business glossary's stats and one page of terms — Understand's main view. */
+export function useUnderstanding(
+  connectionId: string | null,
+  query: GlossaryQuery = DEFAULT_GLOSSARY_QUERY,
+  enabled = true
+) {
+  return useQuery<Understanding>({
+    queryKey: [...contextKeys.understanding(connectionId ?? ''), query],
+    queryFn: () => contextApi.contextObjects.fetchUnderstanding(connectionId!, query),
+    enabled: Boolean(connectionId) && enabled,
+    placeholderData: (prev) => prev,
+    ...proposedQueryOptions<Understanding>(),
   })
 }
 
@@ -411,7 +440,7 @@ export function useDecideRelationship(connectionId: string | null) {
 
 export function useReviewQueue(
   connectionId: string | null,
-  filters: { type?: string; status?: string; search?: string },
+  filters: ReviewQuery,
   enabled = true
 ) {
   return useQuery<ReviewQueue>({

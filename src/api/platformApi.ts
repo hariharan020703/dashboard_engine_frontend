@@ -4,8 +4,12 @@ import type {
   AdminUser,
   AuditLogEntry,
   Company,
+  CompanyOption,
   DashboardSummary,
+  ListQuery,
   NewCompany,
+  Paged,
+  UserListItem,
   PermissionDef,
   PlatformOverview,
   Role,
@@ -29,8 +33,33 @@ export function fetchPlatformOverview(): Promise<PlatformOverview> {
 
 /* ------------------------------------------------------------- companies --- */
 
-export function listCompanies(): Promise<Company[]> {
-  return get<Company[]>('/platform/companies')
+/** One page of companies, searched and sorted by the server. */
+export function listCompanies(query: ListQuery & { active?: boolean }): Promise<Paged<Company>> {
+  return get<Paged<Company>>('/platform/companies', { params: query })
+}
+
+/*
+ * The company picker list is read by the platform top bar on every page AND by
+ * the page beneath it (user directory, onboarding dialogs, connection form) at
+ * the same moment. One in-flight request is shared, and the answer is reused
+ * briefly; any company write clears it, so a new or renamed company appears in
+ * the pickers immediately.
+ */
+const OPTIONS_TTL_MS = 30_000
+let optionsCache: { at: number; value: Promise<CompanyOption[]> } | null = null
+
+function invalidateCompanyOptions(): void {
+  optionsCache = null
+}
+
+/** id, name and active of every company - for pickers, not for the table. */
+export function listCompanyOptions(): Promise<CompanyOption[]> {
+  if (optionsCache && Date.now() - optionsCache.at < OPTIONS_TTL_MS) return optionsCache.value
+  const value = get<CompanyOption[]>('/platform/companies/options')
+  optionsCache = { at: Date.now(), value }
+  // A failure must not be served from the cache for the next 30 seconds.
+  value.catch(invalidateCompanyOptions)
+  return value
 }
 
 export function fetchCompany(id: number): Promise<Company> {
@@ -45,6 +74,7 @@ export function fetchCompany(id: number): Promise<Company> {
  * and the same name can be retried.
  */
 export function createCompany(body: NewCompany): Promise<Company> {
+  invalidateCompanyOptions()
   return post<Company>('/platform/companies', body)
 }
 
@@ -52,10 +82,12 @@ export function updateCompany(
   id: number,
   body: { name?: string; active?: boolean }
 ): Promise<Company> {
+  invalidateCompanyOptions()
   return patch<Company>(`/platform/companies/${id}`, body)
 }
 
 export function deleteCompany(id: number): Promise<{ deleted: true }> {
+  invalidateCompanyOptions()
   return del<{ deleted: true }>(`/platform/companies/${id}`)
 }
 
@@ -76,11 +108,11 @@ export function unassignDashboard(companyId: number, dashboardId: string): Promi
 
 /* ----------------------------------------------------------------- users --- */
 
-/** The cross-tenant directory. `companyId` narrows it to one customer. */
-export function listUsers(companyId?: number): Promise<AdminUser[]> {
-  return get<AdminUser[]>('/platform/users', {
-    params: companyId ? { companyId } : undefined,
-  })
+/** One page of the cross-tenant directory. `companyId` narrows it to one customer. */
+export function listUsers(
+  query: ListQuery & { companyId?: number; role?: string; status?: string }
+): Promise<Paged<UserListItem>> {
+  return get<Paged<UserListItem>>('/platform/users', { params: query })
 }
 
 export function fetchUser(id: number): Promise<AdminUser> {
@@ -154,8 +186,9 @@ export function saveRolePermissions(
 
 /* ---------------------------------------------------------------- system --- */
 
-export function fetchAuditLogs(limit = 100): Promise<AuditLogEntry[]> {
-  return get<AuditLogEntry[]>('/platform/audit', { params: { limit } })
+/** One page of the audit trail, searched and sorted over the whole file. */
+export function fetchAuditLogs(query: ListQuery & { event?: string }): Promise<Paged<AuditLogEntry>> {
+  return get<Paged<AuditLogEntry>>('/platform/audit', { params: query })
 }
 
 /**

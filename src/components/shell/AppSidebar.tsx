@@ -3,7 +3,6 @@ import { NavLink, useLocation } from 'react-router-dom'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
 import { isNavItemActive, navigationFor } from '@/app/navigation'
-import { dedupeDashboards } from '@/services/dashboards'
 import {
   Sidebar,
   SidebarContent,
@@ -49,7 +48,7 @@ export function AppSidebar({ onNavigate }: AppSidebarProps = {}) {
    * grants of its own, and a flat list of every dashboard in the registry is
    * what the Dashboards screen is for.
    */
-  const granted = platform ? [] : dedupeDashboards(dashboards)
+  const granted = platform ? [] : dashboards
 
   const handleNavClick = () => {
     onNavigate?.()

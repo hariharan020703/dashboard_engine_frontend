@@ -1,71 +1,74 @@
-import { listAdkContextObjects } from '@/api/adkAgentApi'
-import type { AdkContextObject, AdkContextObjects } from '@/api/adkAgentApi'
 import { contextHttp } from './client'
 import { endpoints } from './endpoints'
+import type { GlossaryQuery, Understanding } from '../types'
 
 /**
  * The facts an extraction run wrote into the Context Layer.
  *
  * This is the actual product of step 4. The agent's prose answer is a report
  * ABOUT the run; these rows are what it did — one per table, column, join,
- * transformation or example it recorded, each tagged with the session that
- * wrote it.
+ * transformation or example it recorded.
  *
- * Same service as `extractionApi.ts` (`VITE_ADK_API_BASE_URL`), and the same
- * identity trick: `workspace_id` is the connection id.
- *
- * Omitting a session id resolves to the workspace's latest run, which is what
- * the step wants on arrival — "what does the context layer currently know
- * about this connection" without having to remember a session.
+ * Read through the Node backend whichever engine ran step 4: both write the
+ * same `context_objects` rows and Node reads that table directly. One page at
+ * a time, filtered by type and searched on the server, with the per-type counts
+ * of the whole run for the chips - a run is mostly column statistics, and the
+ * browser used to receive every one of them, payload and all, to show a few.
  */
 
-export type ContextObject = AdkContextObject
-export type ContextObjects = AdkContextObjects
+/** One fact, as its card renders it. */
+export interface ContextObject {
+  id: string
+  objectType: string
+  qualifiedName: string
+  sourceType: string
+  verified: boolean
+  payload: Record<string, unknown> | null
+}
+
+export interface ContextObjects {
+  resolvedSessionId: string | null
+  /** Every fact in the run. */
+  count: number
+  /** Facts per object type, across the whole run. */
+  counts: Record<string, number>
+  /** How many the current type filter and search select. */
+  matched: number
+  objects: ContextObject[]
+}
+
+export interface ContextObjectsQuery {
+  type?: string
+  search?: string
+  page: number
+  pageSize: number
+}
+
+/** Drops unset params so the request carries only what narrows it. */
+function params<T extends object>(query: T): Partial<T> {
+  return Object.fromEntries(
+    Object.entries(query).filter(([, v]) => v !== undefined && v !== null && v !== '' && v !== 'all')
+  ) as Partial<T>
+}
 
 export function fetchContextObjects(
   connectionId: string,
-  sessionId?: string
+  query: ContextObjectsQuery
 ): Promise<ContextObjects> {
-  return listAdkContextObjects(connectionId, sessionId)
+  return contextHttp.get<ContextObjects>(endpoints.contextObjects(connectionId), {
+    params: params(query),
+  })
 }
 
 /**
- * The same facts, read through the Node backend — used in demo mode, when the
- * ADK API is not what wrote them and may not be running at all. The backend
- * answers in the ADK API's shape; this maps it the same way.
- */
-export async function fetchNodeContextObjects(connectionId: string): Promise<ContextObjects> {
-  const raw = await contextHttp.get<{
-    workspace_id: string
-    resolved_session_id: string | null
-    count: number
-    objects: ContextObject[]
-  }>(endpoints.contextObjects(connectionId))
-  return {
-    workspaceId: raw.workspace_id,
-    resolvedSessionId: raw.resolved_session_id ?? null,
-    count: raw.count ?? 0,
-    objects: raw.objects ?? [],
-  }
-}
-
-/**
- * Groups objects by `object_type`, preserving the order the service returned.
+ * The business glossary — entities, metrics and dimensions the latest run
+ * recorded, with their review state and the counts above them.
  *
- * The service sorts by `object_type, qualified_name`, so the groups come out
- * in a stable order without this having to impose one — which matters because
- * the set of types is the skill's, not this application's, and a hardcoded
- * order here would put a new type last or drop it.
+ * Read through the Node backend whichever engine ran step 4: both write the
+ * same `context_objects` rows, and Node reads that table directly.
  */
-export function groupByType(objects: ContextObject[]): Array<{
-  type: string
-  objects: ContextObject[]
-}> {
-  const groups = new Map<string, ContextObject[]>()
-  for (const object of objects) {
-    const key = object.object_type || 'unknown'
-    if (!groups.has(key)) groups.set(key, [])
-    groups.get(key)!.push(object)
-  }
-  return [...groups.entries()].map(([type, list]) => ({ type, objects: list }))
+export function fetchUnderstanding(connectionId: string, query: GlossaryQuery): Promise<Understanding> {
+  return contextHttp.get<Understanding>(endpoints.understanding(connectionId), {
+    params: params(query),
+  })
 }

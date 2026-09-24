@@ -4,7 +4,6 @@ import { fetchSessions } from '@/api/authApi'
 import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
-import { dedupeDashboards } from '@/services/dashboards'
 import ChangePasswordForm from '@/components/auth/ChangePasswordForm'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { AccessLevelBadge, RoleBadge, StatusBadge } from '@/components/common/Badges'
@@ -35,7 +34,7 @@ export default function ProfilePage() {
 
   if (!user) return null
 
-  const granted = dedupeDashboards(dashboards)
+  const granted = dashboards
   const isPlatform = user.companyId === null
 
   return (

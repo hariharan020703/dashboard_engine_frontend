@@ -1,4 +1,25 @@
-import type { AccessLevel, AuthUser, RoleName } from '@/types/auth'
+import type { AccessLevel, AuthUser, RoleName, UserStatus } from '@/types/auth'
+
+/**
+ * One page of a server-side list, and the query that asks for it.
+ *
+ * Every paged endpoint takes ?page&pageSize&search&sort&dir (plus its own
+ * filters) and answers { items, total }: the database searches, sorts and
+ * limits, and only the visible page crosses the wire. `total` is the number of
+ * rows matching the filters, which is what the pager counts.
+ */
+export interface Paged<T> {
+  items: T[]
+  total: number
+}
+
+export interface ListQuery {
+  page: number
+  pageSize: number
+  search?: string
+  sort?: string
+  dir?: 'asc' | 'desc'
+}
 
 export interface Company {
   id: number
@@ -8,7 +29,16 @@ export interface Company {
   createdAt: string | null
   userCount?: number
   dashboardCount?: number
+  /** Accounts awaiting activation. Sent by the company detail endpoint only. */
+  pendingCount?: number
   admin?: AdminUser
+}
+
+/** What a company picker renders. GET /platform/companies/options. */
+export interface CompanyOption {
+  id: number
+  name: string
+  active: boolean
 }
 
 export interface NewCompany {
@@ -22,6 +52,22 @@ export interface NewCompany {
 }
 
 export type AdminUser = Omit<AuthUser, 'permissions'>
+
+/**
+ * One row of the people table - the columns it renders. Optional fields are
+ * omitted by the server when empty; `companyName` is only sent to a platform
+ * caller, and its absence there means a platform account.
+ */
+export interface UserListItem {
+  id: number
+  username: string
+  email: string
+  role: RoleName
+  status: UserStatus
+  displayName?: string
+  lastLoginAt?: string
+  companyName?: string
+}
 
 export interface UserOption {
   id: number
@@ -69,17 +115,9 @@ export interface GroupDetail extends Group {
   userIds: number[]
 }
 
-export interface GroupMember {
-  id: number
-  username: string
-  email: string
-  role: RoleName
-  status: string
-}
-
 export interface DashboardSummary {
   id: string
-  title?: string
+  title?: string | null
   source: string
   assigned?: boolean
 }
@@ -89,32 +127,41 @@ export interface UserGrant {
   dashboardTitle: string | null
   level: AccessLevel
   origin: 'direct' | 'group'
-  groupId: number | null
-  groupName: string | null
+  /** Present on a group grant only. */
+  groupId?: number
+  groupName?: string
 }
 
 export interface DashboardGrants {
   dashboardId: string
+  /**
+   * What the CALLER may do here. A company administrator has full authority;
+   * anyone else acts through their own level on this dashboard - sharing up to
+   * that level, and removing access only with "Full control".
+   */
+  you?: {
+    userId: number
+    level: AccessLevel
+    administrator: boolean
+    mayRevoke: boolean
+  }
   users: Array<{
     userId: number
     username: string
     email: string
     level: AccessLevel
-    grantedAt: string | null
   }>
   groups: Array<{
     groupId: number
     groupName: string
     level: AccessLevel
-    grantedAt: string | null
     active: boolean
   }>
 }
 
 export interface GroupDashboards {
-  groupId: number
-  available: DashboardSummary[]
-  held: Array<DashboardSummary & { level: AccessLevel }>
+  available: Array<{ id: string; title: string | null }>
+  held: Array<{ id: string; title: string | null; level: AccessLevel }>
 }
 
 export interface ScopeDimension {
@@ -135,13 +182,23 @@ export interface UserScope {
   enforced: boolean
 }
 
+/**
+ * One audit entry, shaped by the server for the table: `label` and `summary`
+ * are what the Event and Detail columns print, `tone` categorises the event,
+ * `detail` is every non-envelope field for the inspect dialog. `ts` stays ISO -
+ * how it reads depends on the viewer's locale and timezone, which only the
+ * browser knows.
+ */
 export interface AuditLogEntry {
   ts: string
   event: string
-  actorId: number | null
-  actor: string | null
-  actorCompanyId: number | null
-  [key: string]: unknown
+  label: string
+  tone: 'danger' | 'warning' | 'success' | 'neutral'
+  summary: string
+  detail: Record<string, unknown>
+  actor?: string
+  actorId?: number
+  actorCompanyId?: number
 }
 
 /**
@@ -175,5 +232,4 @@ export interface WorkspaceOverview {
   dashboards: number
   /** Of those, how many the caller personally holds a grant on. */
   dashboardsGranted: number
-  company: Company
 }

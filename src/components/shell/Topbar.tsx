@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { ShieldCheck } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
-import { listCompanies } from '@/api/platformApi'
+import { listCompanyOptions } from '@/api/platformApi'
 import { Separator } from '@/components/ui/separator'
 import { SidebarTrigger } from '@/components/ui/sidebar'
 import { TenantLabel, TenantSwitcher } from '@/components/shell/TenantSwitcher'
 import { UserMenu } from '@/components/shell/UserMenu'
-import type { Company } from '@/types/admin'
+import type { CompanyOption } from '@/types/admin'
 
 /**
  * The top bar: who you are, and which context you are working in.
@@ -25,7 +25,7 @@ export function Topbar({ onOpenNav }: { onOpenNav?: () => void } = {}) {
   const navigate = useNavigate()
   const platform = paths.shell === 'platform'
 
-  const [companies, setCompanies] = useState<Company[]>([])
+  const [companies, setCompanies] = useState<CompanyOption[]>([])
   const [loadingCompanies, setLoadingCompanies] = useState(platform)
   const [selectedCompanyId, setSelectedCompanyId] = useState<number | null>(null)
 
@@ -33,7 +33,7 @@ export function Topbar({ onOpenNav }: { onOpenNav?: () => void } = {}) {
     if (!platform) return
     let cancelled = false
 
-    listCompanies()
+    listCompanyOptions()
       .then((data) => {
         if (!cancelled) setCompanies(data)
       })

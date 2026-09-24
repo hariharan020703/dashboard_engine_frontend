@@ -31,7 +31,8 @@ export function GrantPicker({
   disabled,
   onGrant,
 }: {
-  dashboards: DashboardSummary[]
+  /** What the picker renders of each: its id and title. */
+  dashboards: Array<Pick<DashboardSummary, 'id' | 'title'>>
   disabled?: boolean
   onGrant: (dashboardId: string, level: AccessLevel) => Promise<unknown>
 }) {

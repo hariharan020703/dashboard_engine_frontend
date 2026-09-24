@@ -7,7 +7,6 @@ import {
   listTeam,
   resendTeamActivation,
 } from '@/api/workspaceApi'
-import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { PeopleDirectory } from '@/components/people/PeopleDirectory'
@@ -25,8 +24,8 @@ import { Button } from '@/components/ui/button'
 export default function TeamPage() {
   const { can, user } = useAuth()
   const [adding, setAdding] = useState(false)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const team = useAsync(() => listTeam(), [])
   const canCreate = can('user.create')
 
   return (
@@ -50,11 +49,8 @@ export default function TeamPage() {
 
       <Section flush>
         <PeopleDirectory
-          people={team.data}
-          loading={team.loading}
-          error={team.error}
-          onRetry={team.reload}
-          onChanged={team.reload}
+          load={listTeam}
+          refreshKey={refreshKey}
           actions={{
             activate: (member) => activateTeamMember(member.id),
             deactivate: (member) => deactivateTeamMember(member.id),
@@ -79,7 +75,7 @@ export default function TeamPage() {
       <UserOnboardingDialog
         open={adding}
         onOpenChange={setAdding}
-        onCreated={team.reload}
+        onCreated={() => setRefreshKey((n) => n + 1)}
         fixedCompanyName={user?.companyName ?? null}
       />
     </Page>

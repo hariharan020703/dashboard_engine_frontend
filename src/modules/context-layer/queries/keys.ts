@@ -49,6 +49,9 @@ export const contextKeys = {
   contextObjects: (connectionId: string) =>
     [...contextKeys.all, 'context-objects', connectionId] as const,
 
+  understanding: (connectionId: string) =>
+    [...contextKeys.all, 'understanding', connectionId] as const,
+
   extraction: (connectionId: string) =>
     [...contextKeys.all, 'extraction', connectionId] as const,
 
@@ -56,7 +59,7 @@ export const contextKeys = {
   model: (connectionId: string) => [...contextKeys.all, 'model', connectionId] as const,
 
   review: (connectionId: string) => [...contextKeys.all, 'review', connectionId] as const,
-  reviewFiltered: (connectionId: string, filters: Record<string, unknown>) =>
+  reviewFiltered: (connectionId: string, filters: object) =>
     [...contextKeys.review(connectionId), filters] as const,
 
   publish: (connectionId: string) => [...contextKeys.all, 'publish', connectionId] as const,

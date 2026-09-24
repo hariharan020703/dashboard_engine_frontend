@@ -12,7 +12,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { CompanyAvatar } from '@/components/common/CompanyAvatar'
 import { ActiveBadge } from '@/components/common/Badges'
-import type { Company } from '@/types/admin'
+import type { CompanyOption } from '@/types/admin'
 
 /**
  * The platform console's tenant context.
@@ -37,7 +37,7 @@ export function TenantSwitcher({
   selectedId,
   onSelect,
 }: {
-  companies: Company[]
+  companies: CompanyOption[]
   loading: boolean
   selectedId: number | null
   onSelect: (companyId: number | null) => void

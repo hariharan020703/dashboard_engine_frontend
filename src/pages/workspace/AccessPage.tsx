@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KeyRound, Loader2, Plus, Trash2, UserPlus, UsersRound } from 'lucide-react'
+import { KeyRound, Loader2, Plus, UserPlus, UsersRound } from 'lucide-react'
 import {
   fetchDashboardGrants,
   grantGroupAccess,
@@ -15,6 +15,7 @@ import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { AccessLevelBadge } from '@/components/common/Badges'
+import { GrantActionsMenu } from '@/components/common/GrantActionsMenu'
 import { ACCESS_LEVEL_LABELS } from '@/components/common/labels'
 import { EmptyState, ErrorState, InlineLoading, TableSkeleton } from '@/components/common/States'
 import { notify } from '@/components/common/notify'
@@ -76,19 +77,32 @@ export default function AccessPage() {
     [selectedId]
   )
 
-  const [granting, setGranting] = useState<'user' | 'group' | null>(null)
-  const [pending, setPending] = useState(false)
+  // The level descriptions, for the options menu on every row.
+  const levels = useAsync(() => listAccessLevels(), [])
 
-  const revoke = async (work: () => Promise<unknown>, message: string) => {
-    setPending(true)
+  const [granting, setGranting] = useState<'user' | 'group' | null>(null)
+  /** Which row is being changed or removed (`user:3`, `group:7`), so only it waits. */
+  const [pendingKey, setPendingKey] = useState<string | null>(null)
+
+  /*
+   * One runner for both actions. Changing a level is the same PUT that
+   * granted it - the backend replaces the existing grant - so no new endpoint.
+   */
+  const act = async (
+    key: string,
+    work: () => Promise<unknown>,
+    message: string,
+    failure: string
+  ) => {
+    setPendingKey(key)
     try {
       await work()
       notify.success(message)
       grants.reload()
     } catch (err) {
-      notify.failure('remove that access', err)
+      notify.failure(failure, err)
     } finally {
-      setPending(false)
+      setPendingKey(null)
     }
   }
 
@@ -200,23 +214,30 @@ export default function AccessPage() {
                       </span>
                       <span className="flex items-center gap-2">
                         <AccessLevelBadge level={holder.level} />
-                        {mayRevoke && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            disabled={pending}
-                            onClick={() =>
-                              void revoke(
-                                () => revokeUserAccess(selectedId, holder.userId),
-                                `${holder.username} can no longer see ${selectedTitle}.`
-                              )
-                            }
-                          >
-                            <Trash2 aria-hidden />
-                            Remove
-                          </Button>
-                        )}
+                        <GrantActionsMenu
+                          holderName={holder.username}
+                          level={holder.level}
+                          levels={levels.data ?? undefined}
+                          mayChange={mayGrant}
+                          mayRemove={mayRevoke}
+                          pending={pendingKey === `user:${holder.userId}`}
+                          onChangeLevel={(level) =>
+                            void act(
+                              `user:${holder.userId}`,
+                              () => grantUserAccess(selectedId, holder.userId, level),
+                              `${holder.username} now ${ACCESS_LEVEL_LABELS[level].toLowerCase()} ${selectedTitle}.`,
+                              'change that permission'
+                            )
+                          }
+                          onRemove={() =>
+                            void act(
+                              `user:${holder.userId}`,
+                              () => revokeUserAccess(selectedId, holder.userId),
+                              `${holder.username} can no longer see ${selectedTitle}.`,
+                              'remove that access'
+                            )
+                          }
+                        />
                       </span>
                     </li>
                   ))}
@@ -268,23 +289,30 @@ export default function AccessPage() {
                       </span>
                       <span className="flex items-center gap-2">
                         <AccessLevelBadge level={holder.level} />
-                        {mayRevoke && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            disabled={pending}
-                            onClick={() =>
-                              void revoke(
-                                () => revokeGroupAccess(selectedId, holder.groupId),
-                                `${holder.groupName} no longer has ${selectedTitle}.`
-                              )
-                            }
-                          >
-                            <Trash2 aria-hidden />
-                            Remove
-                          </Button>
-                        )}
+                        <GrantActionsMenu
+                          holderName={holder.groupName}
+                          level={holder.level}
+                          levels={levels.data ?? undefined}
+                          mayChange={mayGrant}
+                          mayRemove={mayRevoke}
+                          pending={pendingKey === `group:${holder.groupId}`}
+                          onChangeLevel={(level) =>
+                            void act(
+                              `group:${holder.groupId}`,
+                              () => grantGroupAccess(selectedId, holder.groupId, level),
+                              `${holder.groupName} now ${ACCESS_LEVEL_LABELS[level].toLowerCase()} ${selectedTitle}.`,
+                              'change that permission'
+                            )
+                          }
+                          onRemove={() =>
+                            void act(
+                              `group:${holder.groupId}`,
+                              () => revokeGroupAccess(selectedId, holder.groupId),
+                              `${holder.groupName} no longer has ${selectedTitle}.`,
+                              'remove that access'
+                            )
+                          }
+                        />
                       </span>
                     </li>
                   ))}

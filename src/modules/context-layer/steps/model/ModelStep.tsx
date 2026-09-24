@@ -11,8 +11,9 @@ import {
 } from '@xyflow/react'
 import type { Edge, Node } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
-import { Check, RefreshCw, Sparkles, X } from 'lucide-react'
+import { Check, Loader2, RefreshCw, Sparkles, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 import { notify } from '@/components/common/notify'
 import { cn } from '@/lib/utils'
 import { StepFrame } from '../../components/StepFrame'
@@ -20,7 +21,6 @@ import {
   EmptyState,
   NoConnectionState,
   QueryBoundary,
-  TableSkeleton,
 } from '../../components/DataStates'
 import { AiBadge, ConfidenceMeter, StatusBadge } from '../../components/primitives'
 import { formatRelativeTime, formatText } from '../../components/format'
@@ -93,13 +93,14 @@ export function ModelStep() {
             } · from the run of ${formatRelativeTime(model.data.generatedAt)}`
           : undefined
       }
+      refreshing={model.isFetching && !model.isPending}
     >
       <QueryBoundary
         query={model}
         step="Model"
         endpoint={`GET ${endpoints.model(connectionId)}`}
         context="load the data model"
-        loading={<TableSkeleton rows={6} columns={4} />}
+        loading={<ModelSkeleton />}
       >
         {(data) => (
           <ReactFlowProvider>
@@ -274,6 +275,7 @@ function ModelCanvas({
           <RelationshipDetail
             edge={selectedEdge}
             busy={decideRelationship.isPending}
+            pending={decideRelationship.isPending ? decideRelationship.variables?.status ?? null : null}
             onAccept={() => decide(selectedEdge, 'accepted')}
             onReject={() => decide(selectedEdge, 'rejected')}
             onClose={() => setSelectedEdgeId(null)}
@@ -312,12 +314,14 @@ function ModelCanvas({
 function RelationshipDetail({
   edge,
   busy,
+  pending,
   onAccept,
   onReject,
   onClose,
 }: {
   edge: ModelEdge
   busy: boolean
+  pending: 'accepted' | 'rejected' | null
   onAccept: () => void
   onReject: () => void
   onClose: () => void
@@ -378,11 +382,19 @@ function RelationshipDetail({
         {edge.status === 'suggested' ? (
           <>
             <Button size="sm" onClick={onAccept} disabled={busy}>
-              <Check className="size-4" aria-hidden />
+              {pending === 'accepted' ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <Check className="size-4" aria-hidden />
+              )}
               Accept
             </Button>
             <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
-              <X className="size-4" aria-hidden />
+              {pending === 'rejected' ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden />
+              ) : (
+                <X className="size-4" aria-hidden />
+              )}
               Reject
             </Button>
           </>
@@ -396,11 +408,34 @@ function RelationshipDetail({
            * and it sticks.
            */
           <Button size="sm" variant="outline" onClick={onReject} disabled={busy}>
-            <X className="size-4" aria-hidden />
+            {pending === 'rejected' ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <X className="size-4" aria-hidden />
+            )}
             Reject instead
           </Button>
         )}
       </footer>
+    </div>
+  )
+}
+
+/** The canvas and its side panel, while the graph loads. */
+function ModelSkeleton() {
+  return (
+    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px]" aria-busy="true">
+      <span className="sr-only">Loading the data model…</span>
+      <div className="relative h-[520px] overflow-hidden rounded-xl border bg-card">
+        <Skeleton className="absolute left-[10%] top-[18%] h-28 w-48 rounded-lg" />
+        <Skeleton className="absolute right-[12%] top-[30%] h-32 w-52 rounded-lg" />
+        <Skeleton className="absolute bottom-[14%] left-[32%] h-28 w-48 rounded-lg" />
+      </div>
+      <div className="space-y-3 rounded-xl border bg-card p-4">
+        <Skeleton className="h-4 w-40" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-4/5" />
+      </div>
     </div>
   )
 }

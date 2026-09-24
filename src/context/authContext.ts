@@ -5,8 +5,6 @@ export interface AuthState {
   status: AuthStatus
   user: AuthUser | null
   dashboards: AccessibleDashboard[]
-  scopes: Record<string, string[]>
-  scopesEnforced: boolean
 
   signIn: (identifier: string, password: string) => Promise<void>
   signOut: () => Promise<void>

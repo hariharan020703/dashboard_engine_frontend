@@ -1,5 +1,5 @@
 import { useDeferredValue, useMemo, useState } from 'react'
-import { Check, ChevronRight, Pencil, Search, SkipForward, X } from 'lucide-react'
+import { Check, ChevronRight, Loader2, Pencil, Search, SkipForward, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
@@ -7,6 +7,8 @@ import { Sheet, SheetContent, SheetFooter, SheetHeader, SheetTitle } from '@/com
 import { notify } from '@/components/common/notify'
 import { cn } from '@/lib/utils'
 import { StepFrame } from '../../components/StepFrame'
+import { Pagination } from '../../components/Pagination'
+import { serverPage } from '../../components/usePagination'
 import {
   EmptyState,
   NoConnectionState,
@@ -41,22 +43,35 @@ import { useReviewDraft } from './useReviewDraft'
  * because a decision can cascade: approving a relationship can resolve a
  * blocker and remove another item entirely.
  */
+const REVIEW_PAGE_SIZE = 25
+
 export function ReviewStep() {
   const { connectionId, goToStep } = useWorkflow()
 
   const [type, setType] = useState<string>('all')
   const [status, setStatus] = useState<string>('all')
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
   const deferredSearch = useDeferredValue(search)
 
+  // Filtered AND paged by the server: the queue used to arrive whole - every
+  // item with its full payload - and render every row at once.
   const filters = useMemo(
     () => ({
       ...(type !== 'all' ? { type } : {}),
       ...(status !== 'all' ? { status } : {}),
       ...(deferredSearch.trim() ? { search: deferredSearch.trim() } : {}),
+      page,
+      pageSize: REVIEW_PAGE_SIZE,
     }),
-    [type, status, deferredSearch]
+    [type, status, deferredSearch, page]
   )
+
+  // Any change of filter starts again from the first page.
+  const chooseType = (next: string) => {
+    setType(next)
+    setPage(1)
+  }
 
   const queue = useReviewQueue(connectionId, filters)
   const decide = useDecideReviewItem(connectionId)
@@ -112,9 +127,17 @@ export function ReviewStep() {
       description="Approve, edit or reject each generated item. Only approved context is published."
       actions={
         <Button variant="outline" size="sm" onClick={onBulkApprove} disabled={bulk.isPending}>
-          Approve all above 90%
+          {bulk.isPending ? (
+            <>
+              <Loader2 className="size-4 animate-spin" aria-hidden />
+              Approving…
+            </>
+          ) : (
+            'Approve all above 90%'
+          )}
         </Button>
       }
+      refreshing={queue.isFetching && !queue.isPending}
     >
       <QueryBoundary
         query={queue}
@@ -124,14 +147,14 @@ export function ReviewStep() {
         loading={<TableSkeleton rows={6} columns={4} />}
       >
         {(data) => (
-          <div className="space-y-4">
+          <div className="space-y-5">
             <div className="flex flex-wrap items-center gap-2">
               {/* Filter chips built from the backend's own counts. */}
               <FilterChip
                 label="All"
                 count={data.total}
                 active={type === 'all'}
-                onClick={() => setType('all')}
+                onClick={() => chooseType('all')}
               />
               {Object.entries(data.counts).map(([key, count]) => (
                 <FilterChip
@@ -139,13 +162,16 @@ export function ReviewStep() {
                   label={key}
                   count={count}
                   active={type === key}
-                  onClick={() => setType(type === key ? 'all' : key)}
+                  onClick={() => chooseType(type === key ? 'all' : key)}
                 />
               ))}
 
               <select
                 value={status}
-                onChange={(e) => setStatus(e.target.value)}
+                onChange={(e) => {
+                  setStatus(e.target.value)
+                  setPage(1)
+                }}
                 aria-label="Filter by status"
                 className="ml-auto h-8 rounded-md border border-input bg-transparent px-2 text-xs outline-none focus-visible:border-ring"
               >
@@ -163,7 +189,10 @@ export function ReviewStep() {
                 />
                 <Input
                   value={search}
-                  onChange={(e) => setSearch(e.target.value)}
+                  onChange={(e) => {
+                    setSearch(e.target.value)
+                    setPage(1)
+                  }}
                   placeholder="Search items…"
                   aria-label="Search review items"
                   className="h-8 pl-8 text-xs"
@@ -177,18 +206,33 @@ export function ReviewStep() {
                 detail="No item matches the current filters."
               />
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-3">
                 {data.items.map((item) => (
                   <ReviewRow
                     key={item.id}
                     item={item}
-                    busy={decide.isPending}
+                    /*
+                     * Only the row being decided waits. The rest stay usable -
+                     * each decision is its own request, and freezing a queue
+                     * of two hundred for one of them is what made it feel slow.
+                     */
+                    pendingDecision={
+                      decide.isPending && decide.variables?.id === item.id
+                        ? decide.variables.decision
+                        : null
+                    }
                     onDecide={(decision) => onDecide(item, decision)}
                     onEdit={() => setEditing(item)}
                   />
                 ))}
               </ul>
             )}
+
+            <Pagination
+              {...serverPage(page, REVIEW_PAGE_SIZE, data.matched)}
+              setPage={setPage}
+              noun="items"
+            />
           </div>
         )}
       </QueryBoundary>
@@ -228,10 +272,17 @@ export function ReviewStep() {
                   onClick={() => onSaveEdit(false)}
                   disabled={update.isPending}
                 >
+                  {update.isPending && !update.variables?.approve ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : null}
                   Save
                 </Button>
                 <Button size="sm" onClick={() => onSaveEdit(true)} disabled={update.isPending}>
-                  <Check className="size-4" aria-hidden />
+                  {update.isPending && update.variables?.approve ? (
+                    <Loader2 className="size-4 animate-spin" aria-hidden />
+                  ) : (
+                    <Check className="size-4" aria-hidden />
+                  )}
                   Save and approve
                 </Button>
               </SheetFooter>
@@ -272,15 +323,16 @@ function FilterChip({
 
 function ReviewRow({
   item,
-  busy,
+  pendingDecision,
   onDecide,
   onEdit,
 }: {
   item: ReviewItem
-  busy: boolean
+  pendingDecision: 'approve' | 'reject' | 'skip' | null
   onDecide: (decision: 'approve' | 'reject' | 'skip') => void
   onEdit: () => void
 }) {
+  const busy = pendingDecision !== null
   const settled = item.status !== 'pending'
 
   return (
@@ -336,7 +388,11 @@ function ReviewRow({
                 onClick={() => onDecide('approve')}
                 disabled={busy}
               >
-                <Check className="size-3.5" aria-hidden />
+                {pendingDecision === 'approve' ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <Check className="size-3.5" aria-hidden />
+                )}
                 Approve
               </Button>
               <Button size="sm" variant="outline" className="h-7" onClick={onEdit}>
@@ -350,7 +406,11 @@ function ReviewRow({
                 onClick={() => onDecide('reject')}
                 disabled={busy}
               >
-                <X className="size-3.5" aria-hidden />
+                {pendingDecision === 'reject' ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <X className="size-3.5" aria-hidden />
+                )}
                 Reject
               </Button>
               <Button
@@ -360,7 +420,11 @@ function ReviewRow({
                 onClick={() => onDecide('skip')}
                 disabled={busy}
               >
-                <SkipForward className="size-3.5" aria-hidden />
+                {pendingDecision === 'skip' ? (
+                  <Loader2 className="size-3.5 animate-spin" aria-hidden />
+                ) : (
+                  <SkipForward className="size-3.5" aria-hidden />
+                )}
                 Skip
               </Button>
             </>

@@ -9,14 +9,17 @@ import {
   grantGroupAccess,
   listGroups,
   listUserOptions,
+  listAccessLevels,
   revokeGroupAccess,
   updateGroup,
 } from '@/api/workspaceApi'
-import { listCompanies } from '@/api/platformApi'
+import { listCompanyOptions } from '@/api/platformApi'
 import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { AccessLevelBadge } from '@/components/common/Badges'
+import { GrantActionsMenu } from '@/components/common/GrantActionsMenu'
+import { ACCESS_LEVEL_LABELS } from '@/components/common/labels'
 import { ChipSelect } from '@/components/common/ChipSelect'
 import { ConfirmDialog } from '@/components/common/ConfirmDialog'
 import { TextField } from '@/components/common/Fields'
@@ -401,8 +404,13 @@ function GroupAccess({ groupId }: { groupId: number }) {
     }
   }
 
+  // The level descriptions, for the options menu on each dashboard.
+  const levels = useAsync(() => listAccessLevels(), [])
+  /** The dashboard being changed or removed, so only its row waits. */
+  const [pendingId, setPendingId] = useState<string | null>(null)
+
   const revoke = async (dashboardId: string, title: string) => {
-    setPending(true)
+    setPendingId(dashboardId)
     try {
       await revokeGroupAccess(dashboardId, groupId)
       notify.success(`The group no longer has ${title}.`)
@@ -410,7 +418,24 @@ function GroupAccess({ groupId }: { groupId: number }) {
     } catch (err) {
       notify.failure('remove that access', err)
     } finally {
-      setPending(false)
+      setPendingId(null)
+    }
+  }
+
+  /** Same PUT as granting: the backend replaces the group's existing grant. */
+  const changeLevel = async (dashboardId: string, title: string, level: AccessLevel) => {
+    setPendingId(dashboardId)
+    try {
+      await grantGroupAccess(dashboardId, groupId, level)
+      notify.success(
+        `The group now ${ACCESS_LEVEL_LABELS[level].toLowerCase()} ${title}.`,
+        'Every active member has the new level.'
+      )
+      access.reload()
+    } catch (err) {
+      notify.failure('change that permission', err)
+    } finally {
+      setPendingId(null)
     }
   }
 
@@ -452,18 +477,16 @@ function GroupAccess({ groupId }: { groupId: number }) {
                 <span className="min-w-0 truncate text-sm font-medium text-foreground">{title}</span>
                 <span className="flex items-center gap-2">
                   <AccessLevelBadge level={dashboard.level} />
-                  {mayRevoke && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      disabled={pending}
-                      onClick={() => void revoke(dashboard.id, title)}
-                    >
-                      <Trash2 aria-hidden />
-                      Remove
-                    </Button>
-                  )}
+                  <GrantActionsMenu
+                    holderName="this group"
+                    level={dashboard.level}
+                    levels={levels.data ?? undefined}
+                    mayChange={mayGrant}
+                    mayRemove={mayRevoke}
+                    pending={pendingId === dashboard.id}
+                    onChangeLevel={(level) => void changeLevel(dashboard.id, title, level)}
+                    onRemove={() => void revoke(dashboard.id, title)}
+                  />
                 </span>
               </li>
             )
@@ -492,7 +515,7 @@ function CreateGroupDialog({
   // Only a platform account has to say which company; a company administrator
   // has exactly one and the server uses it without being told.
   const companies = useAsync(
-    () => (isPlatform ? listCompanies() : Promise.resolve([])),
+    () => (isPlatform ? listCompanyOptions() : Promise.resolve([])),
     [isPlatform]
   )
 

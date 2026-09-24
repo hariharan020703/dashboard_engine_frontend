@@ -1,9 +1,8 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ChartColumn, KeyRound, LayoutDashboard, Loader2, Plus, Trash2 } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
-import { dedupeDashboards } from '@/services/dashboards'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { AccessLevelBadge } from '@/components/common/Badges'
 import { EmptyState } from '@/components/common/States'
@@ -32,10 +31,17 @@ export default function DashboardsPage() {
   const paths = usePaths()
   const navigate = useNavigate()
 
-  const granted = dedupeDashboards(dashboards)
+  const granted = dashboards
   const isAdmin = can('access.grant')
   const canCreate = can('dashboard.create')
+  // Deleting needs the role permission AND "Full control" of that dashboard.
   const canDelete = can('dashboard.delete')
+
+  // The list carries each current level; re-read it on arrival so a change an
+  // administrator just made is reflected without signing out.
+  useEffect(() => {
+    void refresh().catch(() => {})
+  }, [refresh])
   const isPlatform = paths.shell === 'platform'
 
   const [createOpen, setCreateOpen] = useState(false)
@@ -120,7 +126,7 @@ export default function DashboardsPage() {
                 <span className="grid size-9 place-items-center rounded-lg bg-muted text-muted-foreground transition-colors group-hover:bg-primary/10 group-hover:text-primary">
                   <ChartColumn className="size-4" aria-hidden />
                 </span>
-                {canDelete && (
+                {canDelete && dashboard.accessLevel === 'admin' && (
                   <button
                     type="button"
                     title="Delete dashboard"

@@ -1,6 +1,6 @@
 import { contextHttp } from './client'
 import { endpoints } from './endpoints'
-import type { ReviewItem, ReviewItemUpdate, ReviewQueue } from '../types'
+import type { ReviewItem, ReviewItemUpdate, ReviewQuery, ReviewQueue } from '../types'
 
 /**
  * Step 6 — Review. PROPOSED: these routes are not built yet.
@@ -15,10 +15,8 @@ import type { ReviewItem, ReviewItemUpdate, ReviewQueue } from '../types'
  * locally and hoping the write landed.
  */
 
-export function fetchReviewQueue(
-  connectionId: string,
-  params?: { type?: string; status?: string; search?: string }
-): Promise<ReviewQueue> {
+/** One page of the queue, filtered by the server. */
+export function fetchReviewQueue(connectionId: string, params: ReviewQuery): Promise<ReviewQueue> {
   return contextHttp.get<ReviewQueue>(endpoints.reviewQueue(connectionId), { params })
 }
 

@@ -114,7 +114,7 @@ export function Section({
 }) {
   return (
     <section
-      className={cn('overflow-hidden rounded-xl border border-border bg-card', className)}
+      className={cn('overflow-hidden rounded-xl border border-border bg-card mt-5', className)}
     >
       {(title || actions) && (
         <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-5 py-3.5">

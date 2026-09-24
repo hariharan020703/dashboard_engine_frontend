@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { MoreHorizontal, Trash2, UserCheck, UserX, Mail } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
@@ -23,7 +23,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { AdminUser, Company } from '@/types/admin'
+import { useServerList } from '@/hooks/useServerList'
+import type { CompanyOption, ListQuery, Paged, UserListItem } from '@/types/admin'
 import type { RoleName, UserStatus } from '@/types/auth'
 
 /**
@@ -39,18 +40,25 @@ import type { RoleName, UserStatus } from '@/types/auth'
  * `showCompany` is the only visual difference, and it is not cosmetic: a company
  * administrator's list is one company by definition, so a Company column there
  * would be the same value on every row.
+ *
+ * The list is SERVER-side: search, the role and status filters, sorting and
+ * paging are all query parameters, and only the visible page is downloaded.
+ * The table used to receive every account - on the platform, every account of
+ * every customer - and filter it in the browser.
  */
 
+export type PeopleQuery = ListQuery & { role?: string; status?: string; companyId?: number }
+
 export interface PeopleActions {
-  activate: (user: AdminUser) => Promise<unknown>
-  deactivate: (user: AdminUser) => Promise<unknown>
-  resendInvitation: (user: AdminUser) => Promise<unknown>
-  remove: (user: AdminUser) => Promise<unknown>
+  activate: (user: UserListItem) => Promise<unknown>
+  deactivate: (user: UserListItem) => Promise<unknown>
+  resendInvitation: (user: UserListItem) => Promise<unknown>
+  remove: (user: UserListItem) => Promise<unknown>
 }
 
 const ALL = '__all__'
 
-function formatLastActive(iso: string | null): string {
+function formatLastActive(iso: string | undefined): string {
   if (!iso) return 'Never'
   const date = new Date(iso)
   if (Number.isNaN(date.getTime())) return 'Never'
@@ -58,11 +66,8 @@ function formatLastActive(iso: string | null): string {
 }
 
 export function PeopleDirectory({
-  people,
-  loading,
-  error,
-  onRetry,
-  onChanged,
+  load,
+  refreshKey = 0,
   actions,
   showCompany = false,
   companies,
@@ -70,16 +75,14 @@ export function PeopleDirectory({
   onCompanyFilterChange,
   empty,
 }: {
-  people: AdminUser[] | null
-  loading: boolean
-  error: unknown
-  onRetry: () => void
-  /** Called after any write, so the caller can re-read its own list. */
-  onChanged: () => void
+  /** Fetches one page for a query - /api/users or /api/platform/users. */
+  load: (query: PeopleQuery) => Promise<Paged<UserListItem>>
+  /** Bump to re-read the current page, e.g. after the caller added someone. */
+  refreshKey?: number
   actions: PeopleActions
   showCompany?: boolean
   /** Platform only: the customers a row may be filtered to. */
-  companies?: Company[]
+  companies?: CompanyOption[]
   companyFilter?: number | null
   onCompanyFilterChange?: (companyId: number | null) => void
   empty: { title: string; body?: string; action?: React.ReactNode }
@@ -91,17 +94,27 @@ export function PeopleDirectory({
 
   const [roleFilter, setRoleFilter] = useState<string>(ALL)
   const [statusFilter, setStatusFilter] = useState<string>(ALL)
-  const [removing, setRemoving] = useState<AdminUser | null>(null)
+  const [removing, setRemoving] = useState<UserListItem | null>(null)
   const [removePending, setRemovePending] = useState(false)
   const [busyId, setBusyId] = useState<number | null>(null)
 
-  const filtered = (people ?? []).filter((person) => {
-    if (roleFilter !== ALL && person.role !== roleFilter) return false
-    if (statusFilter !== ALL && person.status !== statusFilter) return false
-    return true
-  })
+  const list = useServerList<UserListItem, Omit<PeopleQuery, keyof ListQuery>>(
+    load,
+    { page: 1, pageSize: 15, sort: 'name', dir: 'asc' },
+    {
+      role: roleFilter === ALL ? undefined : roleFilter,
+      status: statusFilter === ALL ? undefined : statusFilter,
+      companyId: companyFilter ?? undefined,
+    }
+  )
+  const onChanged = list.reload
 
-  const run = async (person: AdminUser, work: () => Promise<unknown>, success: string) => {
+  // The caller's own writes (adding a person) re-read the current page.
+  useEffect(() => {
+    if (refreshKey > 0) onChanged()
+  }, [refreshKey, onChanged])
+
+  const run = async (person: UserListItem, work: () => Promise<unknown>, success: string) => {
     setBusyId(person.id)
     try {
       await work()
@@ -129,11 +142,11 @@ export function PeopleDirectory({
     }
   }
 
-  const columns: ColumnDef<AdminUser>[] = [
+  const columns: ColumnDef<UserListItem>[] = [
     {
       key: 'name',
       header: 'Name',
-      sortValue: (person) => (person.displayName || person.username).toLowerCase(),
+      serverSort: 'name',
       render: (person) => (
         <div className="min-w-0">
           <p className="truncate font-medium text-foreground">
@@ -149,8 +162,8 @@ export function PeopleDirectory({
             key: 'company',
             header: 'Company',
             secondary: true,
-            sortValue: (person: AdminUser) => person.companyName ?? '',
-            render: (person: AdminUser) =>
+            serverSort: 'company',
+            render: (person: UserListItem) =>
               person.companyName ? (
                 <span className="truncate text-sm">{person.companyName}</span>
               ) : (
@@ -160,21 +173,21 @@ export function PeopleDirectory({
                   Platform
                 </Badge>
               ),
-          } satisfies ColumnDef<AdminUser>,
+          } satisfies ColumnDef<UserListItem>,
         ]
       : []),
     {
       key: 'role',
       header: 'Role',
       width: 'w-40',
-      sortValue: (person) => person.role,
+      serverSort: 'role',
       render: (person) => <RoleBadge role={person.role} />,
     },
     {
       key: 'status',
       header: 'Status',
       width: 'w-36',
-      sortValue: (person) => person.status,
+      serverSort: 'status',
       render: (person) => <StatusBadge status={person.status} />,
     },
     {
@@ -182,7 +195,7 @@ export function PeopleDirectory({
       header: 'Last active',
       width: 'w-36',
       secondary: true,
-      sortValue: (person) => person.lastLoginAt ?? '',
+      serverSort: 'lastLogin',
       render: (person) => (
         <span className="text-sm text-muted-foreground">
           {formatLastActive(person.lastLoginAt)}
@@ -288,19 +301,20 @@ export function PeopleDirectory({
   return (
     <>
       <DataTable
-        data={loading || error ? null : filtered}
+        data={list.error ? null : (list.data?.items ?? null)}
         columns={columns}
         keyOf={(person) => person.id}
-        loading={loading}
-        error={error}
-        onRetry={onRetry}
+        loading={list.loading}
+        error={list.error}
+        onRetry={list.reload}
         onRowClick={(person) => navigate(paths.user(person.id))}
         searchPlaceholder="Search by name, username or email…"
-        searchFilter={(person, query) =>
-          person.username.toLowerCase().includes(query) ||
-          person.email.toLowerCase().includes(query) ||
-          (person.displayName || '').toLowerCase().includes(query)
-        }
+        server={{
+          total: list.data?.total ?? 0,
+          query: list.query,
+          onQueryChange: list.setQuery,
+          narrowed: list.narrowed,
+        }}
         empty={empty}
         toolbar={
           <>

@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { AlertTriangle, Inbox, Loader2, PlugZap, RefreshCw, ServerCog } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -80,6 +81,102 @@ export function TableSkeleton({ rows = 6, columns = 5 }: { rows?: number; column
           ))}
         </div>
       ))}
+    </div>
+  )
+}
+
+/** A row of stat-tile skeletons, the same size as the tiles they stand in for. */
+export function TileSkeleton({ count = 3, className }: { count?: number; className?: string }) {
+  return (
+    <div className={cn('grid gap-4 sm:grid-cols-3', className)} aria-busy="true">
+      {Array.from({ length: count }).map((_, i) => (
+        <div key={i} className="rounded-xl border bg-card p-4 shadow-xs">
+          <Skeleton className="h-3.5 w-24" />
+          <Skeleton className="mt-3 h-7 w-20" />
+          <Skeleton className="mt-3 h-3 w-32" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** A bordered card with a heading bar and table rows, for a card still loading. */
+export function CardSkeleton({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
+  return (
+    <div className="overflow-hidden rounded-xl border bg-card shadow-xs" aria-busy="true">
+      <div className="border-b px-5 py-4">
+        <Skeleton className="h-4 w-40" />
+      </div>
+      <div className="px-3 py-4">
+        <TableSkeleton rows={rows} columns={columns} />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * A thin bar across the top of a step while data it already shows is being
+ * re-read. The content stays; the bar says it is about to change.
+ */
+export function RefreshingBar({ active }: { active: boolean }) {
+  return (
+    <div
+      className={cn(
+        'pointer-events-none absolute inset-x-0 top-0 z-10 h-0.5 overflow-hidden transition-opacity',
+        active ? 'opacity-100' : 'opacity-0'
+      )}
+      role={active ? 'progressbar' : undefined}
+      aria-label={active ? 'Refreshing' : undefined}
+    >
+      <div className="h-full w-full animate-pulse bg-primary/70" />
+    </div>
+  )
+}
+
+/** Seconds since mount, for "still working" feedback on long operations. */
+function useElapsedSeconds() {
+  const [seconds, setSeconds] = useState(0)
+  useEffect(() => {
+    const started = Date.now()
+    const id = window.setInterval(() => setSeconds(Math.floor((Date.now() - started) / 1000)), 1000)
+    return () => window.clearInterval(id)
+  }, [])
+  return seconds
+}
+
+function formatElapsed(seconds: number) {
+  if (seconds < 60) return `${seconds}s`
+  return `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`
+}
+
+/**
+ * Covers a step's body while a long operation runs — saving before moving on,
+ * or an AI run that holds the request open.
+ *
+ * The elapsed time is the point: a spinner alone looks the same at second 3
+ * and at minute 3, and the second is when people assume it has hung.
+ */
+export function BusyOverlay({ title, detail }: { title: string; detail?: ReactNode }) {
+  const seconds = useElapsedSeconds()
+  return (
+    <div
+      className="absolute inset-0 z-20 flex items-center justify-center bg-background/75 backdrop-blur-[2px]"
+      role="status"
+      aria-live="polite"
+    >
+      <div className="mx-6 flex max-w-md flex-col items-center rounded-xl border bg-card px-8 py-7 text-center shadow-lg">
+        <span className="relative mb-4 flex size-12 items-center justify-center">
+          <span className="absolute inset-0 animate-ping rounded-full bg-primary/15" aria-hidden />
+          <span className="relative flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Loader2 className="size-6 animate-spin" aria-hidden />
+          </span>
+        </span>
+        <p className="text-sm font-semibold">{title}</p>
+        {detail ? <div className="mt-1.5 text-sm text-muted-foreground">{detail}</div> : null}
+        <p className="mt-4 text-xs tabular-nums text-muted-foreground">
+          Elapsed {formatElapsed(seconds)}
+        </p>
+      </div>
     </div>
   )
 }

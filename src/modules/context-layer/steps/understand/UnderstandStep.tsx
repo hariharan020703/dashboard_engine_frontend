@@ -1,23 +1,33 @@
+import type { ReactNode } from 'react'
 import ReactMarkdown from 'react-markdown'
 import remarkGfm from 'remark-gfm'
-import { Loader2, Sparkles, Terminal, TriangleAlert } from 'lucide-react'
+import { ChevronRight, Loader2, Sparkles, Terminal, TriangleAlert } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { notify } from '@/components/common/notify'
 import { StepFrame } from '../../components/StepFrame'
-import { EmptyState, ErrorState, NoConnectionState } from '../../components/DataStates'
+import {
+  BusyOverlay,
+  CardSkeleton,
+  EmptyState,
+  ErrorState,
+  NoConnectionState,
+  TileSkeleton,
+} from '../../components/DataStates'
 import { SectionHeading } from '../../components/primitives'
 import {
   useConnection,
   useContextObjects,
-  useContextSettings,
   useExtraction,
   useRunExtraction,
+  useUnderstanding,
 } from '../../queries/hooks'
 import { useWorkflow } from '../../state/workflowContext'
 import type { ExtractionResult } from '../../api/extractionApi'
 import type { ContextObjects } from '../../api/contextObjectsApi'
+import type { Understanding } from '../../types'
 import { ContextObjectList } from './ContextObjectList'
+import { GlossaryView } from './GlossaryView'
 
 /**
  * Step 4 — Understand. The first AI-produced step.
@@ -41,9 +51,8 @@ export function UnderstandStep() {
   const connection = useConnection(connectionId)
   const extraction = useExtraction(connectionId)
   const facts = useContextObjects(connectionId)
+  const glossary = useUnderstanding(connectionId)
   const rerun = useRunExtraction(connectionId)
-  // TEMPORARY: while the agent is unavailable the backend generates demo facts.
-  const demo = useContextSettings().data?.extractionMode === 'demo'
 
   if (!connectionId) {
     return (
@@ -66,15 +75,51 @@ export function UnderstandStep() {
 
   const result = extraction.data ?? null
   const running = rerun.isPending
+  const hasContent = Boolean(result || (glossary.data && glossary.data.stats.termsGenerated > 0))
+
+  const body = extraction.isPending || (glossary.isPending && !result) ? (
+    <UnderstandSkeleton />
+  ) : extraction.isError ? (
+    <ErrorState
+      context="reach the context extraction service"
+      error={extraction.error}
+      onRetry={() => extraction.refetch()}
+    />
+  ) : hasContent ? (
+    <ExtractionView
+      connectionId={connectionId}
+      result={result}
+      facts={facts.data ?? null}
+      glossary={glossary.data ?? null}
+      glossaryLoading={glossary.isPending}
+    />
+  ) : (
+    <EmptyState
+      title="No extraction yet"
+      detail={
+        datasetIds.length === 0
+          ? 'Select datasets in Discover first — the agent is given those ids to work from.'
+          : 'Run the extraction to have the agent read the selected datasets and write what it finds into the context layer.'
+      }
+      action={
+        datasetIds.length > 0 ? (
+          <Button size="sm" onClick={run}>
+            <Sparkles className="size-4" aria-hidden />
+            Run extraction
+          </Button>
+        ) : (
+          <Button size="sm" variant="outline" onClick={() => goToStep('discover')}>
+            Go to Discover
+          </Button>
+        )
+      }
+    />
+  )
 
   return (
     <StepFrame
       title="Understand your data"
-      description={
-        demo
-          ? 'Demo context generated from the datasets you selected — the AI agent is switched off.'
-          : 'What the extraction agent found in the datasets you selected.'
-      }
+      description="What the extraction agent found in the datasets you selected."
       actions={
         <Button
           variant="outline"
@@ -87,82 +132,40 @@ export function UnderstandStep() {
           ) : (
             <Sparkles className="size-4" aria-hidden />
           )}
-          {result ? 'Run again' : demo ? 'Generate demo context' : 'Run extraction'}
+          {result ? 'Run again' : 'Run extraction'}
         </Button>
       }
       footerNote={result ? `Session ${result.sessionId}` : undefined}
+      refreshing={!running && (glossary.isFetching || extraction.isFetching) && hasContent}
     >
       {running ? (
-        <RunningState count={datasetIds.length} demo={demo} />
-      ) : extraction.isPending ? (
-        <RunningState count={datasetIds.length} loadingOnly demo={demo} />
-      ) : extraction.isError ? (
-        <ErrorState
-          context="reach the context extraction service"
-          error={extraction.error}
-          onRetry={() => extraction.refetch()}
-        />
-      ) : result || (facts.data && facts.data.count > 0) ? (
-        <ExtractionView result={result} facts={facts.data ?? null} />
+        /*
+         * A run holds the request open for minutes. Whatever is already on
+         * screen stays visible underneath, dimmed, so it is clear what is
+         * about to be replaced; with nothing yet, the glossary's skeleton
+         * stands in for it.
+         */
+        <div className="relative min-h-[480px]">
+          {hasContent ? body : <UnderstandSkeleton />}
+          <BusyOverlay
+            title="Analysing your data with AI"
+            detail={`Reading ${datasetIds.length} dataset${datasetIds.length === 1 ? '' : 's'} and generating the business glossary, metrics and relationships. This can take a few minutes.`}
+          />
+        </div>
       ) : (
-        <EmptyState
-          title="No extraction yet"
-          detail={
-            datasetIds.length === 0
-              ? 'Select datasets in Discover first — the agent is given those ids to work from.'
-              : 'Run the extraction to have the agent read the selected datasets and write what it finds into the context layer.'
-          }
-          action={
-            datasetIds.length > 0 ? (
-              <Button size="sm" onClick={run}>
-                <Sparkles className="size-4" aria-hidden />
-                {demo ? 'Generate demo context' : 'Run extraction'}
-              </Button>
-            ) : (
-              <Button size="sm" variant="outline" onClick={() => goToStep('discover')}>
-                Go to Discover
-              </Button>
-            )
-          }
-        />
+        body
       )}
     </StepFrame>
   )
 }
 
-/**
- * The run is synchronous and long.
- *
- * Saying roughly what it is doing, and that minutes are expected, is the
- * difference between waiting and assuming it has hung.
- */
-function RunningState({
-  count,
-  loadingOnly,
-  demo,
-}: {
-  count: number
-  loadingOnly?: boolean
-  demo?: boolean
-}) {
+/** The glossary's shape — tiles, then the table card — while it loads. */
+function UnderstandSkeleton() {
   return (
-    <div className="flex flex-col items-center justify-center rounded-lg border border-dashed px-6 py-16 text-center">
-      <Loader2 className="mb-4 size-6 animate-spin text-primary" aria-hidden />
-      <p className="text-sm font-medium">
-        {loadingOnly ? 'Looking for a previous run…' : 'Extracting context'}
-      </p>
-      {loadingOnly ? null : demo ? (
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          Reading the schema and sample of {count} dataset{count === 1 ? '' : 's'} and
-          writing demo context from them. This takes a few seconds per table.
-        </p>
-      ) : (
-        <p className="mt-1 max-w-md text-sm text-muted-foreground">
-          The agent is reading {count} dataset{count === 1 ? '' : 's'} and writing what it
-          finds into the context layer. It runs to completion before answering, so a few
-          minutes is normal.
-        </p>
-      )}
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading…</span>
+      <TileSkeleton count={3} />
+      <CardSkeleton rows={8} columns={6} />
     </div>
   )
 }
@@ -177,14 +180,20 @@ function RunningState({
  * outcome.
  */
 function ExtractionView({
+  connectionId,
   result,
   facts,
+  glossary,
+  glossaryLoading,
 }: {
+  connectionId: string
   result: ExtractionResult | null
   facts: ContextObjects | null
+  glossary: Understanding | null
+  glossaryLoading: boolean
 }) {
   return (
-    <div className="space-y-5">
+    <div className="space-y-6">
 
       {result?.interrupted ? (
         <div className="flex items-start gap-2.5 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
@@ -198,36 +207,42 @@ function ExtractionView({
         </div>
       ) : null}
 
-      {facts ? (
-        <section>
-          <SectionHeading
-            title="Facts written to the context layer"
-            description={
-              facts.resolvedSessionId
-                ? `${facts.count} object${facts.count === 1 ? '' : 's'} from run ${facts.resolvedSessionId}`
-                : 'No run has written to this connection yet.'
-            }
-          />
-          <ContextObjectList objects={facts.objects} />
-        </section>
+      {/*
+        The glossary leads: it is what the run recorded, read back from the
+        store. The raw facts (every column included) and the run's own report
+        sit below it, collapsed - one is detail, the other is prose about the
+        run, and neither should be read before the outcome.
+      */}
+      {glossary ? (
+        <GlossaryView connectionId={connectionId} />
+      ) : glossaryLoading ? (
+        <UnderstandSkeleton />
+      ) : null}
+
+      {facts && facts.count > 0 ? (
+        <Collapsible
+          title={`All facts written (${facts.count})`}
+          description={
+            facts.resolvedSessionId
+              ? `Every object from run ${facts.resolvedSessionId}, including column statistics.`
+              : undefined
+          }
+        >
+          <ContextObjectList connectionId={connectionId} />
+        </Collapsible>
       ) : null}
 
       {result ? (
-        <section>
-          <SectionHeading
-            title={result.mode === 'demo' ? 'Run report' : 'Agent report'}
-            description={
-              result.mode === 'demo'
-                ? 'What the demo generator read and wrote.'
-                : "The agent's own account of the run, in its words."
-            }
-          />
+        <Collapsible
+          title="Agent report"
+          description="The agent's own account of the run, in its words."
+        >
           <article className="rounded-lg border bg-card px-4 py-3">
             <div className="prose prose-sm dark:prose-invert max-w-none [&_table]:text-xs">
               <ReactMarkdown remarkPlugins={[remarkGfm]}>{result.text}</ReactMarkdown>
             </div>
           </article>
-        </section>
+        </Collapsible>
       ) : null}
 
       {/*
@@ -262,5 +277,32 @@ function ExtractionView({
         </section>
       ) : null}
     </div>
+  )
+}
+
+/** A section that starts closed. Native `<details>`, so it needs no state. */
+function Collapsible({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <details className="group rounded-xl border bg-card">
+      <summary className="flex cursor-pointer list-none items-center gap-2 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <ChevronRight
+          className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-90"
+          aria-hidden
+        />
+        <span className="text-sm font-semibold">{title}</span>
+        {description ? (
+          <span className="truncate text-xs text-muted-foreground">{description}</span>
+        ) : null}
+      </summary>
+      <div className="border-t px-4 py-4">{children}</div>
+    </details>
   )
 }

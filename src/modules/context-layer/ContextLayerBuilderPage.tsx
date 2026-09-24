@@ -8,7 +8,8 @@ import { ContextQueryProvider } from './queries/QueryProvider'
 import { WorkflowProvider } from './state/WorkflowProvider'
 import { useWorkflow } from './state/workflowContext'
 import { Stepper } from './components/Stepper'
-import { LoadingState } from './components/DataStates'
+import { CardSkeleton, TileSkeleton } from './components/DataStates'
+import { Skeleton } from '@/components/ui/skeleton'
 import { VersionBadge } from './components/VersionBadge'
 import { formatRelativeTime } from './components/format'
 import { useContextVersions, useTrackStep } from './queries/hooks'
@@ -90,7 +91,7 @@ function BuilderShell() {
 
   return (
     <Page>
-      <div className="flex flex-col gap-4">
+      <div className="flex flex-col gap-6">
         <header className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold tracking-tight">Context Layer Builder</h1>
@@ -120,7 +121,7 @@ function BuilderShell() {
             can be expensive.
           */}
           <div className="flex min-h-[520px] flex-col">
-            <Suspense fallback={<LoadingState label="Loading step…" />}>
+            <Suspense fallback={<StepSkeleton />}>
               {step === 'connect' ? <ConnectStep /> : null}
               {step === 'discover' ? <DiscoverStep /> : null}
               {step === 'profile' ? <ProfileStep /> : null}
@@ -168,6 +169,26 @@ function VersionLine({ connectionId }: { connectionId: string | null }) {
           </span>
         </>
       ) : null}
+    </div>
+  )
+}
+
+/**
+ * A step's frame while its code chunk downloads - title bar, tiles, a card -
+ * so moving to the next step shows the page taking shape, not a blank box.
+ */
+function StepSkeleton() {
+  return (
+    <div className="flex flex-1 flex-col" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading step…</span>
+      <div className="space-y-2 border-b px-6 py-4">
+        <Skeleton className="h-5 w-56" />
+        <Skeleton className="h-3.5 w-96 max-w-full" />
+      </div>
+      <div className="space-y-6 px-6 py-6">
+        <TileSkeleton count={3} />
+        <CardSkeleton rows={6} columns={5} />
+      </div>
     </div>
   )
 }

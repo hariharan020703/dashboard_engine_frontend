@@ -9,9 +9,11 @@ import type {
   Group,
   GroupDashboards,
   GroupDetail,
-  GroupMember,
+  ListQuery,
+  Paged,
   ScopeOptions,
   UserGrant,
+  UserListItem,
   UserOption,
   UserScope,
   WorkspaceOverview,
@@ -31,7 +33,7 @@ import type {
 
 /* -------------------------------------------------------------- workspace --- */
 
-/** Real counts for the caller's own company, plus the company itself. */
+/** Real counts for the caller's own company. */
 export function fetchWorkspaceOverview(): Promise<WorkspaceOverview> {
   return get<WorkspaceOverview>('/workspace/overview')
 }
@@ -43,9 +45,11 @@ export function fetchMyCompany(): Promise<Company> {
 
 /* ------------------------------------------------------------------ team --- */
 
-/** The caller's company directory. */
-export function listTeam(): Promise<AdminUser[]> {
-  return get<AdminUser[]>('/users')
+/** One page of the caller's company directory. */
+export function listTeam(
+  query: ListQuery & { role?: string; status?: string }
+): Promise<Paged<UserListItem>> {
+  return get<Paged<UserListItem>>('/users', { params: query })
 }
 
 /** id, username and email for pickers, same company only. */
@@ -127,10 +131,6 @@ export function fetchGroup(id: number): Promise<GroupDetail> {
   return get<GroupDetail>(`/groups/${id}`)
 }
 
-export function fetchGroupMembers(id: number): Promise<GroupMember[]> {
-  return get<GroupMember[]>(`/groups/${id}/members`)
-}
-
 export function createGroup(body: {
   name: string
   active?: boolean
@@ -179,6 +179,14 @@ export function fetchDashboardGrants(
   return get<DashboardGrants>(`/access/dashboards/${encodeURIComponent(dashboardId)}/grants`, {
     params: companyId ? { companyId } : undefined,
   })
+}
+
+/**
+ * The colleagues a dashboard can be shared with. Open to anyone who may share
+ * it - a sharer does not get the full user directory, only these names.
+ */
+export function listShareablePeople(dashboardId: string): Promise<UserOption[]> {
+  return get<UserOption[]>(`/access/dashboards/${encodeURIComponent(dashboardId)}/people`)
 }
 
 export function grantUserAccess(

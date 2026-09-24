@@ -4,7 +4,7 @@ import {
   activateUser,
   deactivateUser,
   deleteUser,
-  listCompanies,
+  listCompanyOptions,
   listUsers,
   resendActivation,
 } from '@/api/platformApi'
@@ -27,12 +27,9 @@ export default function PlatformUsersPage() {
   const { can } = useAuth()
   const [adding, setAdding] = useState(false)
   const [companyFilter, setCompanyFilter] = useState<number | null>(null)
+  const [refreshKey, setRefreshKey] = useState(0)
 
-  const people = useAsync(
-    () => listUsers(companyFilter ?? undefined),
-    [companyFilter]
-  )
-  const companies = useAsync(() => listCompanies(), [])
+  const companies = useAsync(() => listCompanyOptions(), [])
 
   const canCreate = can('user.create')
 
@@ -53,11 +50,8 @@ export default function PlatformUsersPage() {
 
       <Section flush>
         <PeopleDirectory
-          people={people.data}
-          loading={people.loading}
-          error={people.error}
-          onRetry={people.reload}
-          onChanged={people.reload}
+          load={listUsers}
+          refreshKey={refreshKey}
           showCompany
           companies={companies.data ?? undefined}
           companyFilter={companyFilter}
@@ -86,7 +80,7 @@ export default function PlatformUsersPage() {
       <UserOnboardingDialog
         open={adding}
         onOpenChange={setAdding}
-        onCreated={people.reload}
+        onCreated={() => setRefreshKey((n) => n + 1)}
         companies={companies.data ?? []}
       />
     </Page>

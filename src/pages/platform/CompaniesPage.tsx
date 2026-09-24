@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Plus } from 'lucide-react'
 import { listCompanies } from '@/api/platformApi'
-import { useAsync } from '@/hooks/useAsync'
+import { useServerList } from '@/hooks/useServerList'
 import { usePaths } from '@/app/usePaths'
 import { useAuth } from '@/context/authContext'
 import { Page, PageHeader, Section } from '@/components/common/Page'
@@ -36,7 +36,8 @@ export default function CompaniesPage() {
   const navigate = useNavigate()
   const [onboarding, setOnboarding] = useState(false)
 
-  const companies = useAsync(() => listCompanies(), [])
+  // Searched, sorted and paged by the server; only the visible page is sent.
+  const companies = useServerList(listCompanies, { page: 1, pageSize: 15, sort: 'name', dir: 'asc' })
 
   const openCompany = (company: Company) => {
     const path = paths.company(company.id)
@@ -47,7 +48,7 @@ export default function CompaniesPage() {
     {
       key: 'name',
       header: 'Company',
-      sortValue: (company) => company.name.toLowerCase(),
+      serverSort: 'name',
       render: (company) => (
         <div className="flex items-center gap-2.5">
           <CompanyAvatar name={company.name} size="md" />
@@ -62,7 +63,7 @@ export default function CompaniesPage() {
       key: 'status',
       header: 'Status',
       width: 'w-32',
-      sortValue: (company) => (company.active ? 1 : 0),
+      serverSort: 'status',
       render: (company) => <ActiveBadge active={company.active} />,
     },
     {
@@ -71,7 +72,7 @@ export default function CompaniesPage() {
       align: 'right',
       width: 'w-24',
       secondary: true,
-      sortValue: (company) => company.userCount ?? 0,
+      serverSort: 'users',
       render: (company) => (
         <span className="tabular-nums">{(company.userCount ?? 0).toLocaleString()}</span>
       ),
@@ -82,7 +83,7 @@ export default function CompaniesPage() {
       align: 'right',
       width: 'w-28',
       secondary: true,
-      sortValue: (company) => company.dashboardCount ?? 0,
+      serverSort: 'dashboards',
       render: (company) => (
         <span className="tabular-nums">{(company.dashboardCount ?? 0).toLocaleString()}</span>
       ),
@@ -92,7 +93,7 @@ export default function CompaniesPage() {
       header: 'Onboarded',
       width: 'w-36',
       secondary: true,
-      sortValue: (company) => company.createdAt ?? '',
+      serverSort: 'created',
       render: (company) => (
         <span className="text-muted-foreground">{formatDate(company.createdAt)}</span>
       ),
@@ -118,7 +119,7 @@ export default function CompaniesPage() {
 
       <Section flush>
         <DataTable
-          data={companies.data}
+          data={companies.error ? null : (companies.data?.items ?? null)}
           columns={columns}
           keyOf={(company) => company.id}
           loading={companies.loading}
@@ -126,10 +127,12 @@ export default function CompaniesPage() {
           onRetry={companies.reload}
           onRowClick={openCompany}
           searchPlaceholder="Search companies…"
-          searchFilter={(company, query) =>
-            company.name.toLowerCase().includes(query) ||
-            company.slug.toLowerCase().includes(query)
-          }
+          server={{
+            total: companies.data?.total ?? 0,
+            query: companies.query,
+            onQueryChange: companies.setQuery,
+            narrowed: companies.narrowed,
+          }}
           empty={{
             title: 'No customers yet',
             body: canCreate

@@ -42,3 +42,24 @@ export const ACCESS_LEVEL_LABELS: Record<AccessLevel, string> = {
   developer: 'Can edit',
   admin: 'Full control',
 }
+
+/** Weakest first - the order every level picker shows. */
+export const ACCESS_LEVEL_ORDER: AccessLevel[] = ['view', 'share', 'developer', 'admin']
+
+/** Whether `level` includes everything `required` allows. */
+export function levelAtLeast(level: AccessLevel | null | undefined, required: AccessLevel): boolean {
+  if (!level) return false
+  return ACCESS_LEVEL_ORDER.indexOf(level) >= ACCESS_LEVEL_ORDER.indexOf(required)
+}
+
+/**
+ * What a level lets the holder do on one dashboard, as a sentence to them.
+ * Mirrors the backend's rules exactly - each line is something the server
+ * will allow, and nothing it will refuse.
+ */
+export const ACCESS_LEVEL_ABILITIES: Record<AccessLevel, string> = {
+  view: 'You can open this dashboard and use its filters.',
+  share: 'You can view this dashboard and share it with colleagues (up to "Can share").',
+  developer: 'You can view, share and edit the cards on this dashboard.',
+  admin: 'You have full control: view, share, edit, remove access and delete this dashboard.',
+}

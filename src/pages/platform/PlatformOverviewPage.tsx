@@ -43,13 +43,16 @@ export default function PlatformOverviewPage() {
   const [onboarding, setOnboarding] = useState(false)
 
   const overview = useAsync(() => fetchPlatformOverview(), [])
-  const companies = useAsync(() => listCompanies(), [])
-  const activity = useAsync(() => fetchAuditLogs(5), [])
+  // The five newest companies and the five latest audit entries, each asked for
+  // as exactly that - not the whole list, sorted and sliced here.
+  const companies = useAsync(
+    () => listCompanies({ page: 1, pageSize: 5, sort: 'created', dir: 'desc' }),
+    []
+  )
+  const activity = useAsync(() => fetchAuditLogs({ page: 1, pageSize: 5 }), [])
 
   const counts = overview.data
-  const recent = [...(companies.data ?? [])]
-    .sort((a, b) => (b.createdAt ?? '').localeCompare(a.createdAt ?? ''))
-    .slice(0, 5)
+  const recent = companies.data?.items ?? []
 
   const reloadAll = () => {
     overview.reload()
@@ -211,7 +214,7 @@ export default function PlatformOverviewPage() {
             />
           ) : activity.loading ? (
             <InlineLoading label="Loading activity…" />
-          ) : (activity.data ?? []).length === 0 ? (
+          ) : (activity.data?.items ?? []).length === 0 ? (
             <EmptyState
               title="Nothing recorded yet"
               body="Administrative actions appear here as they happen."
@@ -220,11 +223,11 @@ export default function PlatformOverviewPage() {
             />
           ) : (
             <ul className="divide-y divide-border">
-              {(activity.data ?? []).map((entry, index) => (
+              {(activity.data?.items ?? []).map((entry, index) => (
                 <li key={`${entry.ts}-${index}`} className="px-5 py-3">
                   <div className="flex items-baseline justify-between gap-2">
                     <span className="truncate text-sm font-medium text-foreground">
-                      {entry.event.replace(/_/g, ' ').toLowerCase()}
+                      {entry.label}
                     </span>
                     <span className="shrink-0 text-xs text-muted-foreground">
                       {relativeTime(entry.ts)}

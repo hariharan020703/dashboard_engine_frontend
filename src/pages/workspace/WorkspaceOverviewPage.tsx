@@ -4,7 +4,6 @@ import { fetchWorkspaceOverview } from '@/api/workspaceApi'
 import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
-import { dedupeDashboards } from '@/services/dashboards'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { StatCard } from '@/components/common/StatCard'
 import { AccessLevelBadge } from '@/components/common/Badges'
@@ -34,7 +33,7 @@ export default function WorkspaceOverviewPage() {
   const paths = usePaths()
 
   const isAdmin = can('user.read')
-  const granted = dedupeDashboards(dashboards)
+  const granted = dashboards
 
   // Only an administrator has the permission behind this, so a plain member
   // never issues a request that would be refused.

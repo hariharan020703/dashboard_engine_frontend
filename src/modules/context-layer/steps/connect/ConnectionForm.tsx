@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { errorMessage } from '@/api/http'
 import { useAsync } from '@/hooks/useAsync'
-import { listCompanies } from '@/api/platformApi'
+import { listCompanyOptions } from '@/api/platformApi'
 import { useAuth } from '@/context/authContext'
 import { cn } from '@/lib/utils'
 import type { Connector, CreatedConnection } from '../../types'
@@ -82,7 +82,7 @@ export function ConnectionForm({
    */
   const isPlatform = user?.companyId === null
   const companies = useAsync(
-    () => (isPlatform ? listCompanies() : Promise.resolve([])),
+    () => (isPlatform ? listCompanyOptions() : Promise.resolve([])),
     [isPlatform]
   )
 

@@ -134,19 +134,36 @@ keeps you on Profile with the selection intact.
 (backend `CONTEXT_EXTRACTION_MODE=demo`, while the Anthropic credit is unavailable), the
 same hooks call the **Node** backend instead: `POST …/extraction` generates agent-shaped
 facts from the selected tables' real schema, and Understand reads the report
-(`GET …/extraction`) and facts (`GET …/context-objects`) from Node too. The result carries
-`mode: 'demo'`, and Understand shows a "Demo output" banner. The choice is made inside
+(`GET …/extraction`) from Node too. The facts (`GET …/context-objects`) are read from Node
+in **both** modes — both engines write the same `context_objects` rows. The result carries
+`mode: 'demo'` for the record, but the screen presents it like any extraction run — no
+"demo" wording anywhere in the UI (product decision); provenance stays server-side. The choice is made inside
 `queries/hooks.ts` (`extractionMode()`), so no step component knows which engine ran.
 Setting the backend back to `agent` is the whole switch.
 
 ### What Understand shows, and in what order
 
+**The business glossary leads** (`steps/understand/GlossaryView.tsx`, `GET …/understanding`,
+served by Node in both modes). Three tiles — terms generated, average confidence, human
+approved (+ this week) — over a searchable table of Term · Type · Definition · Applies to ·
+Confidence · State, 10 per page, filtered by All / AI generated / Needs review / Approved /
+Overridden. **Filtering, search and paging are the server's** (`?filter=all|ai|review|approved|override&search&page&pageSize`):
+the response carries the whole-glossary `stats`, the `matched` count and one page of `terms`. The backend maps `table` → Entity, `metric` → Metric, `glossary` → Dimension
+(when `payload.kind = 'dimension'`) or Term, and derives the state: *Human override* (edited
+in Review — `context_object_reviews.edited`), *Human approved*, *Source verified* (verified by
+the run itself), *AI generated* (pending, confidence ≥ 0.8), *AI suggested* (pending, lower),
+*Rejected*. Columns are not glossary terms; they stay under "All facts written" and Review.
+
+Below it, collapsed, the two reads described next:
+
 Two things, from two different reads, and the order is deliberate:
 
-1. **Facts written to the context layer** — `GET /workspaces/{id}/context-objects`, which
-   resolves to the latest run when no `session_id` is given. These are the actual
-   `context_objects` rows: one per table, column, transformation or example the agent
-   recorded, each with `object_type`, `qualified_name`, `source_type` and `verified`.
+1. **Facts written to the context layer** — `GET /context/connections/:id/context-objects`
+   (Node, in both modes), the latest run. These are the actual `context_objects` rows: one
+   per table, column, transformation or example the agent recorded, each with `objectType`,
+   `qualifiedName`, `sourceType`, `verified` and `payload`. **One page at a time**
+   (`?type&search&page&pageSize`, 25 per page) with `counts` per type across the whole run
+   for the chips — a run is mostly `column_stats`, and the list used to receive all of them.
 2. **Agent report** — the markdown the run returned, plus the tools it called (it *writes*,
    so "what did that run do" shouldn't need the server logs).
 
@@ -158,7 +175,7 @@ the outcome.
 **generically** — chips for arrays, JSON for objects, `description` promoted to body text
 because every type carries it. No renderer per type: that set belongs to the extraction
 skill, it will grow, and a switch here would silently hide anything new. Type filter chips
-are built from the types actually present, never a hardcoded list.
+are built from the server's per-type `counts`, never a hardcoded list.
 
 `verified` splits the trust bands visually (green / amber) because it is the skill's own
 flag — true for structural facts, false for anything that needed interpretation, which is
@@ -262,12 +279,12 @@ Profile rows are marked LIVE; the rest are `PROPOSED`.
 |---|---|---|---|
 | Profile  | `GET` | `/profile` | **LIVE** — `ProfileOverview`, from the stored selection |
 | Profile  | `GET` | `/tables/:tableId` | **LIVE** — `TableProfile`, read live from the warehouse |
-| Understand | `GET` | `/understanding` | `Understanding` — `stats`, `sections[].blocks[]` |
-| Understand | `POST` | `/understanding/generate` | starts a run, same shape |
+| Understand | `GET` | `/understanding` | **LIVE** — `Understanding`: `stats`, `matched`, one page of `terms` (`?filter&search&page&pageSize`) |
+| Understand | `GET` | `/context-objects` | **LIVE** — `ContextObjects`: `count`, `counts`, `matched`, one page of `objects` (`?type&search&page&pageSize`) |
 | Model | `GET` | `/model` | `ModelGraph` — `nodes`, `edges` |
 | Model | `POST` | `/model/generate` | starts detection, same shape |
 | Model | `POST`/`PATCH`/`DELETE` | `/model/relationships[/:id]` | `ModelEdge` |
-| Review | `GET` | `/review` | `ReviewQueue` — `items`, `counts`, `total` |
+| Review | `GET` | `/review` | **LIVE** — `ReviewQueue`: one page of `items`, `counts`/`total` (whole run), `matched` (`?type&status&search&page&pageSize`, filtered in SQL) |
 | Review | `POST` | `/review/:itemId/decision` | approve / reject / skip, optional `update` |
 | Review | `PATCH` | `/review/:itemId` | edit without deciding |
 | Review | `POST` | `/review/decision` | bulk, by filter not by id list |

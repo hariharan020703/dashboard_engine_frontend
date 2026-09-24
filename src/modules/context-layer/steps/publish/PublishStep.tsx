@@ -10,9 +10,12 @@ import { StepFrame } from '../../components/StepFrame'
 import {
   EmptyState,
   NoConnectionState,
+  CardSkeleton,
   QueryBoundary,
   TableSkeleton,
+  TileSkeleton,
 } from '../../components/DataStates'
+import { Skeleton } from '@/components/ui/skeleton'
 import { SectionHeading, StatTile } from '../../components/primitives'
 import { VersionBadge } from '../../components/VersionBadge'
 import { formatDateTime, formatExact, formatRelativeTime } from '../../components/format'
@@ -101,16 +104,26 @@ export function PublishStep() {
       title="Publish context layer"
       description="Review the summary and publish. This makes the context available to chat, dashboards, reports and agents."
       hideNext
+      refreshing={summary.isFetching && !summary.isPending}
     >
       <QueryBoundary
         query={summary}
         step="Publish"
         endpoint={`GET ${endpoints.publishSummary(connectionId)}`}
         context="load the publish summary"
-        loading={<TableSkeleton rows={4} columns={5} />}
+        loading={
+          <div className="space-y-6">
+            <Skeleton className="h-16 w-full rounded-lg" />
+            <TileSkeleton count={8} className="grid-cols-2 sm:grid-cols-3 lg:grid-cols-4" />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <CardSkeleton rows={3} columns={2} />
+              <CardSkeleton rows={3} columns={2} />
+            </div>
+          </div>
+        }
       >
         {(data) => (
-          <div className="space-y-5">
+          <div className="space-y-6">
             {published ? (
               <PublishedBanner result={published} />
             ) : (
@@ -118,14 +131,14 @@ export function PublishStep() {
             )}
 
             {data.stats.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                 {data.stats.map((stat) => (
                   <StatTile key={stat.id} label={stat.label} value={stat.value} />
                 ))}
               </div>
             ) : null}
 
-            <div className="grid gap-5 lg:grid-cols-2">
+            <div className="grid gap-6 lg:grid-cols-2">
               <section>
                 <SectionHeading title="Included datasets" />
                 {data.datasets.length === 0 ? (
@@ -382,6 +395,16 @@ function BlockerList({
 function VersionHistory({ connectionId }: { connectionId: string }) {
   const versions = useContextVersions(connectionId)
   const rows = versions.data?.versions ?? []
+  if (versions.isPending) {
+    return (
+      <section>
+        <SectionHeading title="Version history" />
+        <div className="rounded-lg border bg-card p-3">
+          <TableSkeleton rows={2} columns={4} />
+        </div>
+      </section>
+    )
+  }
   if (rows.length === 0) return null
 
   const labelOf = new Map(rows.map((v) => [v.id, `${v.name} ${v.label}`]))

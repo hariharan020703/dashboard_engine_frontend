@@ -9,11 +9,13 @@ import {
   EmptyState,
   EndpointPendingState,
   ErrorState,
-  LoadingState,
   NoConnectionState,
   QueryBoundary,
+  RefreshingBar,
   TableSkeleton,
+  TileSkeleton,
 } from '../../components/DataStates'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Cell, StatTile } from '../../components/primitives'
 import { Pagination } from '../../components/Pagination'
 import { usePagination } from '../../components/usePagination'
@@ -84,6 +86,12 @@ export function ProfileStep() {
       description="Structure and statistics for the datasets you selected, read from the source by the backend."
       nextLabel="Analyse with AI"
       nextPending={runExtraction.isPending}
+      pendingLabel="Analysing…"
+      pendingOverlay={{
+        title: 'Analysing your data with AI',
+        detail: `Reading ${datasetIds.length} dataset${datasetIds.length === 1 ? '' : 's'} and generating the business glossary, metrics and relationships. This can take a few minutes — keep this tab open.`,
+      }}
+      refreshing={overview.isFetching && !overview.isPending}
       nextDisabled={datasetIds.length === 0}
       /*
        * This button is the one place the workflow leaves the Node API.
@@ -254,12 +262,13 @@ function TableDetail({ connectionId, tableId }: { connectionId: string; tableId:
       />
     )
   }
-  if (profile.isPending || !profile.data) return <LoadingState label="Loading table profile…" />
+  if (profile.isPending || !profile.data) return <TableDetailSkeleton />
 
   const table = profile.data
 
   return (
-    <div className="space-y-6">
+    <div className="relative space-y-6">
+      <RefreshingBar active={profile.isFetching} />
       <header className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-border/60">
         <div className="flex items-center gap-2.5">
           <span className="grid size-9 place-items-center rounded-lg bg-primary/10 text-primary">
@@ -274,8 +283,7 @@ function TableDetail({ connectionId, tableId }: { connectionId: string; tableId:
         </div>
       </header>
 
-      {/* 4 Stat Tiles: Rows, Columns, Storage, Last refreshed (Quality removed) */}
-      <div className="grid grid-cols-2 gap-3.5 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
         <StatTile
           icon={<Layers className="size-3.5 text-primary" />}
           label="Rows"
@@ -332,6 +340,27 @@ function TableDetail({ connectionId, tableId }: { connectionId: string; tableId:
           <SampleTable sample={table.sample} />
         </TabsContent>
       </Tabs>
+    </div>
+  )
+}
+
+/** The shape of a table's profile while it is read live from the warehouse. */
+function TableDetailSkeleton() {
+  return (
+    <div className="space-y-6" aria-busy="true" aria-live="polite">
+      <span className="sr-only">Loading table profile…</span>
+      <div className="flex items-center gap-2.5 border-b border-border/60 pb-3">
+        <Skeleton className="size-9 rounded-lg" />
+        <div className="space-y-1.5">
+          <Skeleton className="h-4 w-56" />
+          <Skeleton className="h-3 w-36" />
+        </div>
+      </div>
+      <TileSkeleton count={4} className="grid-cols-2 sm:grid-cols-4" />
+      <Skeleton className="h-9 w-64 rounded-lg" />
+      <div className="rounded-xl border bg-card p-4 shadow-xs">
+        <TableSkeleton rows={8} columns={5} />
+      </div>
     </div>
   )
 }

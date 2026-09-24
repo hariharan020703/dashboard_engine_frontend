@@ -4,7 +4,6 @@ import { fetchColumns } from '@/api/dashboardApi'
 import { useAsync } from '@/hooks/useAsync'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
-import { dedupeDashboards } from '@/services/dashboards'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { StatCard } from '@/components/common/StatCard'
 import { DataTable, type ColumnDef } from '@/components/common/DataTable'
@@ -41,7 +40,7 @@ export default function DataPage() {
   const paths = usePaths()
   const isPlatform = paths.shell === 'platform'
 
-  const available = dedupeDashboards(dashboards)
+  const available = dashboards
   const [picked, setPicked] = useState('')
   const dashboardId = picked || available[0]?.id || ''
 

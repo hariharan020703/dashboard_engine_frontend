@@ -3,11 +3,15 @@ import type { FormEvent } from 'react'
 import { Link, useNavigate, useParams } from 'react-router-dom'
 import { ArrowRight, LayoutDashboard, Loader2, Trash2, UserPlus, Users } from 'lucide-react'
 import {
+  activateUser,
   assignDashboard,
+  deactivateUser,
   deleteCompany,
+  deleteUser,
   fetchCompany,
   listCompanyDashboards,
   listUsers,
+  resendActivation,
   unassignDashboard,
   updateCompany,
 } from '@/api/platformApi'
@@ -15,7 +19,8 @@ import { useAsync } from '@/hooks/useAsync'
 import { usePaths } from '@/app/usePaths'
 import { useAuth } from '@/context/authContext'
 import { Page, PageHeader, Section } from '@/components/common/Page'
-import { ActiveBadge, RoleBadge, StatusBadge } from '@/components/common/Badges'
+import { ActiveBadge, StatusBadge } from '@/components/common/Badges'
+import { PeopleDirectory } from '@/components/people/PeopleDirectory'
 import { CompanyAvatar } from '@/components/common/CompanyAvatar'
 import { StatCard } from '@/components/common/StatCard'
 import {
@@ -56,8 +61,18 @@ export default function CompanyDetailPage() {
   const [deletePending, setDeletePending] = useState(false)
 
   const company = useAsync(() => fetchCompany(companyId), [companyId])
-  const users = useAsync(() => listUsers(companyId), [companyId])
+  /*
+   * Counts come with the company (userCount, pendingCount, dashboardCount);
+   * the administrators are the one list the overview shows, asked for by role.
+   * The page used to download every account in the company to count them and
+   * filter out the admins in the browser.
+   */
+  const admins = useAsync(
+    () => listUsers({ companyId, role: 'COMPANY_ADMIN', page: 1, pageSize: 100, sort: 'name' }),
+    [companyId]
+  )
   const dashboards = useAsync(() => listCompanyDashboards(companyId), [companyId])
+  const [peopleRefresh, setPeopleRefresh] = useState(0)
 
   /*
    * The settings form, DERIVED from the loaded company until somebody edits it.
@@ -165,7 +180,7 @@ export default function CompanyDetailPage() {
     }
   }
 
-  const memberCount = users.data?.length ?? null
+  const memberCount = record.userCount ?? null
   const assignedCount = dashboards.data?.filter((d) => d.assigned).length ?? null
   const willSuspend = record.active && !active
 
@@ -205,7 +220,7 @@ export default function CompanyDetailPage() {
         {/* ------------------------------------------------- overview --- */}
         <TabsContent value="overview" className="mt-4 space-y-6">
           <div className="grid gap-4 sm:grid-cols-3">
-            <StatCard label="People" value={memberCount} icon={Users} loading={users.loading} />
+            <StatCard label="People" value={memberCount} icon={Users} loading={company.loading} />
             <StatCard
               label="Dashboards assigned"
               value={assignedCount}
@@ -214,21 +229,21 @@ export default function CompanyDetailPage() {
             />
             <StatCard
               label="Awaiting activation"
-              value={users.data ? users.data.filter((u) => u.status === 'pending').length : null}
+              value={record.pendingCount ?? null}
               icon={UserPlus}
-              loading={users.loading}
+              loading={company.loading}
             />
           </div>
 
           <Section title="Administrators" description="Who runs this company." flush>
-            {users.error ? (
-              <ErrorState error={users.error} onRetry={users.reload} compact />
-            ) : users.loading ? (
+            {admins.error ? (
+              <ErrorState error={admins.error} onRetry={admins.reload} compact />
+            ) : admins.loading ? (
               <InlineLoading label="Loading people…" />
             ) : (
               (() => {
-                const admins = (users.data ?? []).filter((u) => u.role === 'COMPANY_ADMIN')
-                if (admins.length === 0) {
+                const list = admins.data?.items ?? []
+                if (list.length === 0) {
                   return (
                     <EmptyState
                       title="No administrator"
@@ -247,7 +262,7 @@ export default function CompanyDetailPage() {
                 }
                 return (
                   <ul className="divide-y divide-border">
-                    {admins.map((admin) => (
+                    {list.map((admin) => (
                       <li key={admin.id}>
                         <Link
                           to={paths.user(admin.id)}
@@ -280,48 +295,27 @@ export default function CompanyDetailPage() {
             description={`Everyone with an account at ${record.name}.`}
             flush
           >
-            {users.error ? (
-              <ErrorState error={users.error} onRetry={users.reload} compact />
-            ) : users.loading ? (
-              <InlineLoading label="Loading people…" />
-            ) : (users.data ?? []).length === 0 ? (
-              <EmptyState
-                title="Nobody here yet"
-                body="This company has no accounts. Add its first person — they will be invited by email."
-                action={
-                  can('user.create') && (
-                    <Button onClick={() => setAddingUser(true)}>
-                      <UserPlus aria-hidden />
-                      Add a person
-                    </Button>
-                  )
-                }
-                compact
-              />
-            ) : (
-              <ul className="divide-y divide-border">
-                {(users.data ?? []).map((member) => (
-                  <li key={member.id}>
-                    <Link
-                      to={paths.user(member.id)}
-                      className="flex flex-wrap items-center gap-3 px-5 py-3 transition-colors hover:bg-muted/50"
-                    >
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate text-sm font-medium text-foreground">
-                          {member.displayName || member.username}
-                        </span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {member.email}
-                        </span>
-                      </span>
-                      <RoleBadge role={member.role} />
-                      <StatusBadge status={member.status} />
-                      <ArrowRight className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
+            <PeopleDirectory
+              load={listUsers}
+              refreshKey={peopleRefresh}
+              companyFilter={companyId}
+              actions={{
+                activate: (user) => activateUser(user.id),
+                deactivate: (user) => deactivateUser(user.id),
+                resendInvitation: (user) => resendActivation(user.id),
+                remove: (user) => deleteUser(user.id),
+              }}
+              empty={{
+                title: 'Nobody here yet',
+                body: 'This company has no accounts. Add its first person — they will be invited by email.',
+                action: can('user.create') ? (
+                  <Button onClick={() => setAddingUser(true)}>
+                    <UserPlus aria-hidden />
+                    Add a person
+                  </Button>
+                ) : undefined,
+              }}
+            />
           </Section>
         </TabsContent>
 
@@ -448,7 +442,8 @@ export default function CompanyDetailPage() {
         open={addingUser}
         onOpenChange={setAddingUser}
         onCreated={() => {
-          users.reload()
+          setPeopleRefresh((n) => n + 1)
+          admins.reload()
           company.reload()
         }}
         companies={[record]}

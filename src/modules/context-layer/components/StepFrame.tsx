@@ -1,8 +1,10 @@
+import { useState } from 'react'
 import type { ReactNode } from 'react'
-import { ArrowLeft, ArrowRight } from 'lucide-react'
+import { ArrowLeft, ArrowRight, Loader2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { WORKFLOW_STEPS, stepIndex, useWorkflow } from '../state/workflowContext'
 import { cn } from '@/lib/utils'
+import { BusyOverlay, RefreshingBar } from './DataStates'
 
 /**
  * The frame every step renders inside: a heading, the step's body, and the
@@ -29,6 +31,9 @@ export function StepFrame({
   hideNext,
   hideBack,
   footerNote,
+  pendingLabel = 'Saving…',
+  pendingOverlay,
+  refreshing = false,
 }: {
   title: string
   description?: ReactNode
@@ -44,15 +49,39 @@ export function StepFrame({
   hideBack?: boolean
   /** A sentence above the footer, e.g. "3 datasets selected". */
   footerNote?: ReactNode
+  /** The Next button's text while `onNext` runs. */
+  pendingLabel?: string
+  /**
+   * Shown over the body while `onNext` runs, for work long enough that a
+   * busy button alone would look like nothing is happening.
+   */
+  pendingOverlay?: { title: string; detail?: ReactNode }
+  /** Data already on screen is being re-read — draws a thin bar at the top. */
+  refreshing?: boolean
 }) {
   const { step, next, back } = useWorkflow()
   const index = stepIndex(step)
   const isFirst = index === 0
   const isLast = index === WORKFLOW_STEPS.length - 1
 
+  /*
+   * Tracked here as well as through `nextPending`, so every step's Next shows
+   * that it is working while `onNext` runs - including steps that never pass
+   * a pending flag.
+   */
+  const [advancing, setAdvancing] = useState(false)
+  const busy = advancing || Boolean(nextPending)
+
   const handleNext = async () => {
+    if (busy) return
     if (onNext) {
-      const result = await onNext()
+      setAdvancing(true)
+      let result: void | boolean
+      try {
+        result = await onNext()
+      } finally {
+        setAdvancing(false)
+      }
       if (result === false) return
     }
     next()
@@ -70,7 +99,13 @@ export function StepFrame({
         {actions ? <div className="flex items-center gap-2">{actions}</div> : null}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-auto px-6 py-5">{children}</div>
+      <div className="relative min-h-0 flex-1 overflow-auto px-6 py-6">
+        <RefreshingBar active={refreshing && !busy} />
+        {children}
+        {busy && pendingOverlay ? (
+          <BusyOverlay title={pendingOverlay.title} detail={pendingOverlay.detail} />
+        ) : null}
+      </div>
 
       <footer
         className={cn(
@@ -82,7 +117,7 @@ export function StepFrame({
           {hideBack || isFirst ? (
             <span />
           ) : (
-            <Button variant="ghost" size="sm" onClick={back}>
+            <Button variant="ghost" size="sm" onClick={back} disabled={busy}>
               <ArrowLeft className="size-4" aria-hidden />
               Back
             </Button>
@@ -97,9 +132,18 @@ export function StepFrame({
           {hideNext || isLast ? (
             <span />
           ) : (
-            <Button size="sm" onClick={handleNext} disabled={nextDisabled || nextPending}>
-              {nextPending ? 'Saving…' : nextLabel ?? 'Next'}
-              {!nextPending ? <ArrowRight className="size-4" aria-hidden /> : null}
+            <Button size="sm" onClick={handleNext} disabled={nextDisabled || busy}>
+              {busy ? (
+                <>
+                  <Loader2 className="size-4 animate-spin" aria-hidden />
+                  {pendingLabel}
+                </>
+              ) : (
+                <>
+                  {nextLabel ?? 'Next'}
+                  <ArrowRight className="size-4" aria-hidden />
+                </>
+              )}
             </Button>
           )}
         </div>

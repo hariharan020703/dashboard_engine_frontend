@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
-import { Clock, RefreshCw, Share2, Trash2 } from 'lucide-react'
-import { Link, useNavigate, useParams } from 'react-router-dom'
+import { Clock, RefreshCw, Share2, ShieldCheck, Trash2 } from 'lucide-react'
+import { useNavigate, useParams } from 'react-router-dom'
 import DashboardRenderer from '@/components/dashboard/DashboardRenderer'
+import { ShareDialog } from '@/components/dashboard/ShareDialog'
+import { ACCESS_LEVEL_ABILITIES, levelAtLeast } from '@/components/common/labels'
 import { deleteDashboard, fetchView, patchCard } from '@/api/dashboardApi'
 import { errorCode, errorMessage } from '@/api/http'
 import { useAuth } from '@/context/authContext'
@@ -44,7 +46,7 @@ export default function DashboardPage() {
 }
 
 function DashboardView({ dashboardId }: { dashboardId: string }) {
-  const { can, refresh } = useAuth()
+  const { can, refresh, dashboards } = useAuth()
   const paths = usePaths()
   const navigate = useNavigate()
 
@@ -56,10 +58,34 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
   const [lastRun, setLastRun] = useState<string>('')
   const [deleting, setDeleting] = useState(false)
   const [deletePending, setDeletePending] = useState(false)
+  const [sharing, setSharing] = useState(false)
 
-  const canEdit = Boolean(view && can('dashboard.update'))
-  const canDelete = Boolean(can('dashboard.delete'))
-  const canShare = Boolean(view && view.accessLevel !== 'view' && can('access.grant') && paths.access)
+  /*
+   * Permission changes land without signing out. Returning to the tab
+   * re-reads the profile, whose dashboard list carries each current level;
+   * that level wins over the one the view was loaded with, so an
+   * administrator's change shows up the next time this tab is looked at.
+   */
+  useEffect(() => {
+    const onFocus = () => void refresh().catch(() => {})
+    window.addEventListener('focus', onFocus)
+    return () => window.removeEventListener('focus', onFocus)
+  }, [refresh])
+  const liveLevel = dashboards.find((d) => d.id === dashboardId)?.accessLevel
+  const level = liveLevel ?? view?.accessLevel ?? null
+
+  /*
+   * Each action needs BOTH halves: the role permission (may this person do
+   * this kind of thing at all) and the level on THIS dashboard. The backend
+   * checks the same pair, so the screen never offers what it would refuse.
+   *
+   *   Edit cards   dashboard.update  + "Can edit" (developer) or above
+   *   Share        "Can share" or above (company administrators: always)
+   *   Delete       dashboard.delete  + "Full control"
+   */
+  const canEdit = Boolean(view && can('dashboard.update') && levelAtLeast(level, 'developer'))
+  const canShare = Boolean(view && levelAtLeast(level, 'share'))
+  const canDelete = Boolean(view && can('dashboard.delete') && levelAtLeast(level, 'admin'))
 
 
   /** Mirrors the slicer state the server just returned, so the two agree. */
@@ -221,7 +247,7 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
             title={
               <span className="flex flex-wrap items-center gap-2.5">
                 {title}
-                <AccessLevelBadge level={view.accessLevel} />
+                {level ? <AccessLevelBadge level={level} /> : null}
               </span>
             }
             description={view.dashboard?.description}
@@ -244,12 +270,10 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
                   Refresh
                 </Button>
 
-                {canShare && paths.access && (
-                  <Button variant="outline" size="sm" asChild>
-                    <Link to={paths.access}>
-                      <Share2 aria-hidden />
-                      Share
-                    </Link>
+                {canShare && (
+                  <Button variant="outline" size="sm" onClick={() => setSharing(true)}>
+                    <Share2 aria-hidden />
+                    Share
                   </Button>
                 )}
 
@@ -267,6 +291,14 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
               </>
             }
           />
+          {level ? (
+            // What this person may do here, in one sentence - the same rules
+            // the buttons above and the backend follow.
+            <p className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+              <ShieldCheck className="size-3.5 shrink-0" aria-hidden />
+              {ACCESS_LEVEL_ABILITIES[level]}
+            </p>
+          ) : null}
         </div>
       </div>
 
@@ -297,6 +329,14 @@ function DashboardView({ dashboardId }: { dashboardId: string }) {
           void reload({})
         }}
         onCardEdit={onCardEdit}
+      />
+
+      <ShareDialog
+        dashboardId={dashboardId}
+        dashboardTitle={title}
+        open={sharing}
+        onOpenChange={setSharing}
+        accessPagePath={can('access.grant') ? paths.access : null}
       />
 
       <ConfirmDialog

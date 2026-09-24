@@ -1,10 +1,12 @@
-import { useDeferredValue, useMemo, useState } from 'react'
+import { useDeferredValue, useState } from 'react'
 import { Search, ShieldCheck, ShieldQuestion } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Input } from '@/components/ui/input'
 import { cn } from '@/lib/utils'
 import { EmptyState } from '../../components/DataStates'
-import { groupByType } from '../../api/contextObjectsApi'
+import { Pagination } from '../../components/Pagination'
+import { serverPage } from '../../components/usePagination'
+import { DEFAULT_FACTS_QUERY, useContextObjects } from '../../queries/hooks'
 import type { ContextObject } from '../../api/contextObjectsApi'
 
 /**
@@ -21,31 +23,32 @@ import type { ContextObject } from '../../api/contextObjectsApi'
  * and a renderer per type would silently hide anything new. The one key given
  * special treatment is `description`, because every type carries it and it is
  * the human-readable line; everything else is shown as it is stored.
+ *
+ * The type chips, the search and the paging are the SERVER's: this asks for one
+ * page and renders it. A run is mostly column statistics, and the list used to
+ * receive every fact with its whole payload to filter and group in the browser.
  */
 
 /** The one payload key promoted to body text. Present on every type so far. */
 const DESCRIPTION_KEY = 'description'
 
-export function ContextObjectList({ objects }: { objects: ContextObject[] }) {
+export function ContextObjectList({ connectionId }: { connectionId: string }) {
   const [type, setType] = useState<string>('all')
   const [search, setSearch] = useState('')
-  const query = useDeferredValue(search).trim().toLowerCase()
+  const [page, setPage] = useState(1)
+  const query = useDeferredValue(search).trim()
 
-  const groups = useMemo(() => groupByType(objects), [objects])
+  const facts = useContextObjects(connectionId, {
+    ...DEFAULT_FACTS_QUERY,
+    ...(type !== 'all' ? { type } : {}),
+    ...(query ? { search: query } : {}),
+    page,
+  })
+  const data = facts.data
 
-  const filtered = useMemo(() => {
-    let list = type === 'all' ? objects : objects.filter((o) => o.object_type === type)
-    if (query) {
-      list = list.filter(
-        (o) =>
-          o.qualified_name.toLowerCase().includes(query) ||
-          JSON.stringify(o.payload ?? {}).toLowerCase().includes(query)
-      )
-    }
-    return list
-  }, [objects, type, query])
+  if (!data) return null
 
-  if (objects.length === 0) {
+  if (data.count === 0) {
     return (
       <EmptyState
         title="This run wrote no facts"
@@ -54,23 +57,28 @@ export function ContextObjectList({ objects }: { objects: ContextObject[] }) {
     )
   }
 
+  const chooseType = (next: string) => {
+    setType(next)
+    setPage(1)
+  }
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         {/* Chips from the types actually present — never a hardcoded list. */}
         <TypeChip
           label="All"
-          count={objects.length}
+          count={data.count}
           active={type === 'all'}
-          onClick={() => setType('all')}
+          onClick={() => chooseType('all')}
         />
-        {groups.map((group) => (
+        {Object.entries(data.counts).map(([key, count]) => (
           <TypeChip
-            key={group.type}
-            label={group.type}
-            count={group.objects.length}
-            active={type === group.type}
-            onClick={() => setType(type === group.type ? 'all' : group.type)}
+            key={key}
+            label={key}
+            count={count}
+            active={type === key}
+            onClick={() => chooseType(type === key ? 'all' : key)}
           />
         ))}
 
@@ -81,7 +89,10 @@ export function ContextObjectList({ objects }: { objects: ContextObject[] }) {
           />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setPage(1)
+            }}
             placeholder="Search facts…"
             aria-label="Search context objects by name or content"
             className="h-8 pl-8 text-xs"
@@ -89,17 +100,23 @@ export function ContextObjectList({ objects }: { objects: ContextObject[] }) {
         </div>
       </div>
 
-      {filtered.length === 0 ? (
+      {data.objects.length === 0 ? (
         <p className="rounded-lg border border-dashed px-3 py-8 text-center text-sm text-muted-foreground">
           No fact matches “{search}”.
         </p>
       ) : (
         <ul className="space-y-2">
-          {filtered.map((object) => (
+          {data.objects.map((object) => (
             <ObjectCard key={object.id} object={object} />
           ))}
         </ul>
       )}
+
+      <Pagination
+        {...serverPage(page, DEFAULT_FACTS_QUERY.pageSize, data.matched)}
+        setPage={setPage}
+        noun="facts"
+      />
     </div>
   )
 }
@@ -147,13 +164,13 @@ function ObjectCard({ object }: { object: ContextObject }) {
     >
       <div className="flex flex-wrap items-center gap-2">
         <p className="min-w-0 break-all font-mono text-sm font-medium">
-          {object.qualified_name}
+          {object.qualifiedName}
         </p>
         <Badge variant="secondary" className="font-mono text-[10px]">
-          {object.object_type}
+          {object.objectType}
         </Badge>
         <Badge variant="outline" className="font-mono text-[10px] text-muted-foreground">
-          {object.source_type}
+          {object.sourceType}
         </Badge>
         <span
           className={cn(

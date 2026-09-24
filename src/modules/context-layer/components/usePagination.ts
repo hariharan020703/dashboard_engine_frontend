@@ -4,6 +4,24 @@ import { useState } from 'react'
 export const PAGE_SIZE = 10
 
 /**
+ * Pager props for a list the SERVER pages: the current page, its size and the
+ * server's count of matching rows. Same shape as usePagination, so <Pagination>
+ * renders either.
+ */
+export function serverPage(page: number, pageSize: number, total: number) {
+  const totalPages = Math.max(1, Math.ceil(total / pageSize))
+  const currentPage = Math.min(page, totalPages)
+  const startIndex = (currentPage - 1) * pageSize
+  return {
+    page: currentPage,
+    totalPages,
+    startIndex,
+    endIndex: Math.min(startIndex + pageSize, total),
+    total,
+  }
+}
+
+/**
  * Client-side paging over a list that is already fully loaded.
  *
  * The page is clamped rather than trusted, so a list that shrinks under it

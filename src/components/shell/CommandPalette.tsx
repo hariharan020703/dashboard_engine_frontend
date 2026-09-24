@@ -4,7 +4,6 @@ import { ChartColumn, Search } from 'lucide-react'
 import { useAuth } from '@/context/authContext'
 import { usePaths } from '@/app/usePaths'
 import { navigationFor } from '@/app/navigation'
-import { dedupeDashboards } from '@/services/dashboards'
 import { Button } from '@/components/ui/button'
 import {
   CommandDialog,
@@ -34,7 +33,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false)
 
   const groups = navigationFor(paths, can)
-  const granted = paths.shell === 'platform' ? [] : dedupeDashboards(dashboards)
+  const granted = paths.shell === 'platform' ? [] : dashboards
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {

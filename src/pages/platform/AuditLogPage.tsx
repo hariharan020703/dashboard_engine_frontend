@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Eye, RefreshCw } from 'lucide-react'
 import { fetchAuditLogs } from '@/api/platformApi'
-import { useAsync } from '@/hooks/useAsync'
+import { useServerList } from '@/hooks/useServerList'
 import { Page, PageHeader, Section } from '@/components/common/Page'
 import { DataTable, type ColumnDef } from '@/components/common/DataTable'
 import { Badge } from '@/components/ui/badge'
@@ -17,35 +17,26 @@ import { cn } from '@/lib/utils'
 import type { AuditLogEntry } from '@/types/admin'
 
 /**
- * Tone for an event, from what the event did rather than from a list of names.
- *
- * Matching on the verb means a new event type - and they are added whenever a
- * capability is - is coloured sensibly without this file being edited. The
- * badge always carries the event's own words too, so a miscategorised tone
- * misleads nobody.
+ * Colours for the server's event categories. Which category an event falls in
+ * is decided by the server (routes/auditRoutes.js); this only paints it.
  */
-function toneFor(event: string): string {
-  const name = event.toLowerCase()
-  if (name.includes('denied') || name.includes('fail') || name.includes('block')) {
-    return 'border-destructive/25 bg-destructive/10 text-destructive'
-  }
-  if (name.includes('deleted') || name.includes('revoked') || name.includes('deactivated')) {
-    return 'border-warning/30 bg-warning/15 text-warning-foreground'
-  }
-  if (name.includes('created') || name.includes('granted') || name.includes('activated')) {
-    return 'border-success/25 bg-success/10 text-success'
-  }
-  return 'border-border bg-muted text-muted-foreground'
+const TONE_CLASS: Record<AuditLogEntry['tone'], string> = {
+  danger: 'border-destructive/25 bg-destructive/10 text-destructive',
+  warning: 'border-warning/30 bg-warning/15 text-warning-foreground',
+  success: 'border-success/25 bg-success/10 text-success',
+  neutral: 'border-border bg-muted text-muted-foreground',
 }
 
-/** The fields every entry has, so the rest can be shown as "what changed". */
-const ENVELOPE_KEYS = new Set(['ts', 'event', 'actor', 'actorId', 'actorCompanyId'])
-
-function summarise(entry: AuditLogEntry): string {
-  const parts = Object.entries(entry)
-    .filter(([key, value]) => !ENVELOPE_KEYS.has(key) && value !== null && value !== undefined)
-    .map(([key, value]) => `${key}: ${String(value)}`)
-  return parts.join(' · ')
+/** Every field of an entry, envelope first, for the inspect dialog. */
+function inspectRows(entry: AuditLogEntry): Array<[string, unknown]> {
+  return [
+    ['ts', entry.ts],
+    ['event', entry.event],
+    ['actor', entry.actor],
+    ['actorId', entry.actorId],
+    ['actorCompanyId', entry.actorCompanyId],
+    ...Object.entries(entry.detail),
+  ]
 }
 
 /**
@@ -54,9 +45,13 @@ function summarise(entry: AuditLogEntry): string {
  * Append-only on the server and read-only here. Platform-only, both because the
  * endpoint is inside /api/platform and because it records actions across every
  * customer - it is the one view that is deliberately not tenant-scoped.
+ *
+ * Search, sort and paging run on the server over the WHOLE trail. The screen
+ * used to load the newest 200 entries and search those, so anything older was
+ * unreachable.
  */
 export default function AuditLogPage() {
-  const logs = useAsync(() => fetchAuditLogs(200), [])
+  const logs = useServerList(fetchAuditLogs, { page: 1, pageSize: 25, sort: 'ts', dir: 'desc' })
   const [inspecting, setInspecting] = useState<AuditLogEntry | null>(null)
 
   const columns: ColumnDef<AuditLogEntry>[] = [
@@ -64,7 +59,7 @@ export default function AuditLogPage() {
       key: 'ts',
       header: 'When',
       width: 'w-44',
-      sortValue: (entry) => entry.ts,
+      serverSort: 'ts',
       render: (entry) => (
         <span className="text-sm tabular-nums text-muted-foreground">
           {new Date(entry.ts).toLocaleString()}
@@ -75,10 +70,10 @@ export default function AuditLogPage() {
       key: 'event',
       header: 'Event',
       width: 'w-56',
-      sortValue: (entry) => entry.event,
+      serverSort: 'event',
       render: (entry) => (
-        <Badge variant="outline" className={cn('font-medium', toneFor(entry.event))}>
-          {entry.event.replace(/_/g, ' ').toLowerCase()}
+        <Badge variant="outline" className={cn('font-medium', TONE_CLASS[entry.tone])}>
+          {entry.label}
         </Badge>
       ),
     },
@@ -86,7 +81,7 @@ export default function AuditLogPage() {
       key: 'actor',
       header: 'Who',
       width: 'w-40',
-      sortValue: (entry) => entry.actor ?? '',
+      serverSort: 'actor',
       render: (entry) => (
         <span className="truncate text-sm text-foreground">{entry.actor ?? 'system'}</span>
       ),
@@ -97,7 +92,7 @@ export default function AuditLogPage() {
       secondary: true,
       render: (entry) => (
         <span className="block max-w-xl truncate text-sm text-muted-foreground">
-          {summarise(entry) || '—'}
+          {entry.summary || '—'}
         </span>
       ),
     },
@@ -128,8 +123,8 @@ export default function AuditLogPage() {
         title="Audit log"
         description="Every administrative and authentication action, across every customer."
         actions={
-          <Button variant="outline" onClick={logs.reload} disabled={logs.loading}>
-            <RefreshCw className={logs.loading ? 'animate-spin' : undefined} aria-hidden />
+          <Button variant="outline" onClick={logs.reload} disabled={logs.loading || logs.refreshing}>
+            <RefreshCw className={logs.loading || logs.refreshing ? 'animate-spin' : undefined} aria-hidden />
             Refresh
           </Button>
         }
@@ -137,7 +132,7 @@ export default function AuditLogPage() {
 
       <Section flush>
         <DataTable
-          data={logs.data}
+          data={logs.error ? null : (logs.data?.items ?? null)}
           columns={columns}
           keyOf={(entry) => `${entry.ts}-${entry.event}-${entry.actorId ?? 'x'}`}
           loading={logs.loading}
@@ -145,23 +140,23 @@ export default function AuditLogPage() {
           onRetry={logs.reload}
           onRowClick={setInspecting}
           searchPlaceholder="Search events, people, details…"
-          searchFilter={(entry, query) =>
-            entry.event.toLowerCase().includes(query) ||
-            String(entry.actor ?? '').toLowerCase().includes(query) ||
-            summarise(entry).toLowerCase().includes(query)
-          }
+          server={{
+            total: logs.data?.total ?? 0,
+            query: logs.query,
+            onQueryChange: logs.setQuery,
+            narrowed: logs.narrowed,
+          }}
           empty={{
             title: 'Nothing recorded yet',
             body: 'Entries are written automatically as administrative and sign-in actions happen.',
           }}
-          pageSize={25}
         />
       </Section>
 
       <Dialog open={inspecting !== null} onOpenChange={(open) => !open && setInspecting(null)}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{inspecting?.event.replace(/_/g, ' ').toLowerCase()}</DialogTitle>
+            <DialogTitle>{inspecting?.label}</DialogTitle>
             <DialogDescription>
               {inspecting ? new Date(inspecting.ts).toLocaleString() : ''}
             </DialogDescription>
@@ -169,7 +164,7 @@ export default function AuditLogPage() {
 
           {inspecting && (
             <dl className="divide-y divide-border text-sm">
-              {Object.entries(inspecting).map(([key, value]) => (
+              {inspectRows(inspecting).map(([key, value]) => (
                 <div key={key} className="flex flex-wrap items-baseline justify-between gap-3 py-2">
                   <dt className="shrink-0 text-xs text-muted-foreground">{key}</dt>
                   <dd className="min-w-0 break-all text-right font-medium text-foreground">

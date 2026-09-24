@@ -42,6 +42,8 @@ export const endpoints = {
    * mode step 4 talks to the ADK API instead (`extractionApi.ts`).
    */
   extraction: (id: string) => `/context/connections/${enc(id)}/extraction`,
+  /** The business glossary Understand shows. Served by Node in both modes. */
+  understanding: (id: string) => `/context/connections/${enc(id)}/understanding`,
   contextObjects: (id: string) => `/context/connections/${enc(id)}/context-objects`,
 
   /*

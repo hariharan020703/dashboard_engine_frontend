@@ -270,6 +270,12 @@ export function DiscoverStep() {
       }
       nextDisabled={selection.length === 0}
       nextPending={saveSelection.isPending}
+      pendingLabel="Saving selection…"
+      pendingOverlay={{
+        title: 'Saving your selection',
+        detail: `Recording ${selection.length} dataset${selection.length === 1 ? '' : 's'} for this context.`,
+      }}
+      refreshing={datasets.isFetching && !datasets.isPending}
       footerNote={
         selection.length > 0
           ? `${selection.length} dataset${selection.length === 1 ? '' : 's'} selected`

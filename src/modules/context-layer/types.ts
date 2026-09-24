@@ -74,6 +74,11 @@ export interface Connection {
    * nothing has been built yet.
    */
   context?: ContextVersionHeadline | null
+  /**
+   * On the list read only: the latest PUBLISHED version - what is live - or
+   * null. Present alongside a draft while a new version is being edited.
+   */
+  published?: ContextVersionHeadline | null
 }
 
 /** Who the credential belongs to, reported when it is validated. */
@@ -368,18 +373,27 @@ export interface ReviewItem {
   source: string | null
   /** What else changes if this is approved, in the backend's words. */
   downstreamImpact: string | null
-  suggestion: string | null
-  createdAt: string | null
-  updatedAt: string | null
   fields: Record<string, unknown> | null
 }
 
+/**
+ * One page of the review queue. `counts` (per type) and `total` describe the
+ * whole run, for the filter chips; `matched` is how many the current filters
+ * select, which is what the pager pages through.
+ */
 export interface ReviewQueue {
-  connectionId: string
   items: ReviewItem[]
-  /** Totals per type AND per status, keyed by the same strings as above. */
   counts: Record<string, number>
   total: number
+  matched: number
+}
+
+export interface ReviewQuery {
+  type?: string
+  status?: string
+  search?: string
+  page: number
+  pageSize: number
 }
 
 /** The editable subset. The backend owns status transitions and timestamps. */
@@ -535,6 +549,71 @@ export interface ContextSettings {
    * backend's templated generator instead of the ADK extraction agent.
    */
   extractionMode: 'agent' | 'demo'
+}
+
+/* =========================================================================
+   Understand — LIVE (Node, derived from `context_objects`)
+
+   The business glossary the latest run produced. Every count is the
+   backend's; the screen only filters and pages what it is sent.
+   ========================================================================== */
+
+export type GlossaryTermType = 'entity' | 'metric' | 'dimension' | 'term'
+
+/**
+ * Where a term stands.
+ *
+ * `ai_generated` / `ai_suggested` are both pending review — the split is the
+ * run's own confidence (≥ 0.8 or not). `source_verified` was verified by the
+ * run itself (read from the source); `human_*` involved a person.
+ */
+export type GlossaryTermState =
+  | 'ai_generated'
+  | 'ai_suggested'
+  | 'human_approved'
+  | 'human_override'
+  | 'source_verified'
+  | 'rejected'
+
+/** One glossary row - what the table renders. */
+export interface GlossaryTerm {
+  id: string
+  term: string
+  typeLabel: string
+  definition: string | null
+  appliesTo: string | null
+  /** 0–1, or null when the run did not say. */
+  confidence: number | null
+  state: GlossaryTermState
+}
+
+/**
+ * The glossary: stats over the whole of it, and one filtered page of terms.
+ * `matched` is how many terms the current filter and search select.
+ */
+export interface Understanding {
+  matched: number
+  stats: {
+    termsGenerated: number
+    entityCount: number
+    metricCount: number
+    dimensionCount: number
+    /** 0–1 mean over terms that carry a confidence; null when none do. */
+    averageConfidence: number | null
+    humanApproved: number
+    approvedThisWeek: number
+  }
+  terms: GlossaryTerm[]
+}
+
+/** The glossary's chips, by id - the server maps each to the states it covers. */
+export type GlossaryFilter = 'all' | 'ai' | 'review' | 'approved' | 'override'
+
+export interface GlossaryQuery {
+  filter: GlossaryFilter
+  search?: string
+  page: number
+  pageSize: number
 }
 
 /* ======================================================== workflow (client)

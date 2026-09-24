@@ -30,7 +30,7 @@ export function StatTile({
     <Wrapper
       {...(onClick ? { type: 'button' as const, onClick } : {})}
       className={cn(
-        'rounded-lg border bg-card p-3 text-left',
+        'rounded-xl border bg-card p-4 text-left shadow-xs',
         onClick && 'transition-colors hover:border-primary/40 hover:bg-accent/40'
       )}
     >

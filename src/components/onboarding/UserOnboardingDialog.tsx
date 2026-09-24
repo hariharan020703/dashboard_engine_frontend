@@ -26,7 +26,7 @@ import { RoleSelect } from '@/components/common/RoleSelect'
 import { ROLE_LABELS } from '@/components/common/labels'
 import { ReviewRow, Stepper } from '@/components/onboarding/Stepper'
 import { notify } from '@/components/common/notify'
-import type { AdminUser, Company } from '@/types/admin'
+import type { AdminUser, CompanyOption } from '@/types/admin'
 import type { RoleName } from '@/types/auth'
 
 const STEPS = ['Person', 'Access', 'Review']
@@ -58,7 +58,7 @@ export function UserOnboardingDialog({
   onOpenChange: (open: boolean) => void
   onCreated: (user: AdminUser) => void
   /** Platform mode: the customers this account may add somebody to. */
-  companies?: Company[]
+  companies?: CompanyOption[]
   /** Workspace mode: the company they are being added to, for the review step. */
   fixedCompanyName?: string | null
 }) {

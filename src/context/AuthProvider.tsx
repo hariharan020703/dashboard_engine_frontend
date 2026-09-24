@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { restoreSession, setAccessToken, setSessionLostHandler } from '@/api/http'
+import { restoreSession, setSessionLostHandler } from '@/api/http'
 import { fetchProfile, login as loginRequest, logout as logoutRequest } from '@/api/authApi'
 import { notify } from '@/components/common/notify'
 import { AuthContext } from './authContext'
@@ -11,8 +11,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<AuthStatus>('RESTORING')
   const [user, setUser] = useState<AuthUser | null>(null)
   const [dashboards, setDashboards] = useState<AccessibleDashboard[]>([])
-  const [scopes, setScopes] = useState<Record<string, string[]>>({})
-  const [scopesEnforced, setScopesEnforced] = useState(false)
 
   const statusRef = useRef(status)
   useEffect(() => {
@@ -20,10 +18,8 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [status])
 
   const clearSession = useCallback((next: AuthStatus) => {
-    setAccessToken(null)
     setUser(null)
     setDashboards([])
-    setScopes({})
     setStatus(next)
   }, [])
 
@@ -31,8 +27,6 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
     const profile = await fetchProfile()
     setUser(profile.user)
     setDashboards(profile.dashboards)
-    setScopes(profile.scopes)
-    setScopesEnforced(profile.scopesEnforced)
     setStatus(profile.state === 'PASSWORD_CHANGE_REQUIRED' ? 'PASSWORD_CHANGE_REQUIRED' : 'AUTHENTICATED')
   }, [])
 
@@ -79,15 +73,15 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
   }, [applyProfile, clearSession])
 
   const adoptSession = useCallback((response: SessionResponse) => {
-    setAccessToken(response.accessToken)
     setUser(response.user)
     setStatus(response.state === 'PASSWORD_CHANGE_REQUIRED' ? 'PASSWORD_CHANGE_REQUIRED' : 'AUTHENTICATED')
   }, [])
 
   const signIn = useCallback(
     async (identifier: string, password: string) => {
+      // The session itself arrived as HttpOnly cookies; the body only says
+      // who signed in and what state the account is in.
       const session = await loginRequest(identifier, password)
-      setAccessToken(session.accessToken)
 
       if (session.state === 'PASSWORD_CHANGE_REQUIRED') {
         // The profile endpoint is blocked in this state, and correctly so. The
@@ -119,15 +113,13 @@ export default function AuthProvider({ children }: { children: ReactNode }) {
       status,
       user,
       dashboards,
-      scopes,
-      scopesEnforced,
       signIn,
       signOut,
       adoptSession,
       refresh: applyProfile,
       can: (permission: string) => Boolean(user?.permissions?.includes(permission)),
     }),
-    [status, user, dashboards, scopes, scopesEnforced, signIn, signOut, adoptSession, applyProfile]
+    [status, user, dashboards, signIn, signOut, adoptSession, applyProfile]
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
