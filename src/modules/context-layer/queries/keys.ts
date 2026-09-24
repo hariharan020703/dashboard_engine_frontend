@@ -16,6 +16,11 @@ export const contextKeys = {
 
   connectors: () => [...contextKeys.all, 'connectors'] as const,
 
+  settings: () => [...contextKeys.all, 'settings'] as const,
+
+  /** Draft / published state of one connection's context. */
+  versions: (connectionId: string) => [...contextKeys.all, 'versions', connectionId] as const,
+
   connections: () => [...contextKeys.all, 'connections'] as const,
   connection: (id: string) => [...contextKeys.connections(), id] as const,
 

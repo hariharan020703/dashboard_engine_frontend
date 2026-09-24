@@ -1,0 +1,6 @@
+node_modules
+dist
+# Build-time values come from Dockerfile ARGs; a local .env must not leak in.
+.env
+.env.*
+!.env.example

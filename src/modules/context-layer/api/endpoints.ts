@@ -30,6 +30,20 @@ export const endpoints = {
   tableProfile: (id: string, tableId: string) =>
     `/context/connections/${enc(id)}/tables/${enc(tableId)}`,
 
+  /* ------------------------------------------- settings and versions --- */
+  settings: () => '/context/settings',
+  versions: (id: string) => `/context/connections/${enc(id)}/versions`,
+  draft: (id: string) => `/context/connections/${enc(id)}/draft`,
+
+  /*
+   * ----------------------------------------- step 4 — demo extraction ---
+   *
+   * Only used when the backend reports `extractionMode: 'demo'`. In agent
+   * mode step 4 talks to the ADK API instead (`extractionApi.ts`).
+   */
+  extraction: (id: string) => `/context/connections/${enc(id)}/extraction`,
+  contextObjects: (id: string) => `/context/connections/${enc(id)}/context-objects`,
+
   /*
    * ------------------------------------------------------ step 5 — model ---
    *

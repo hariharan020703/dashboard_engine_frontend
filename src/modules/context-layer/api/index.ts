@@ -6,6 +6,7 @@ import * as review from './reviewApi'
 import * as publish from './publishApi'
 import * as extraction from './extractionApi'
 import * as contextObjects from './contextObjectsApi'
+import * as versions from './versionApi'
 
 /**
  * The Context Layer's API surface, one namespace per step.
@@ -28,6 +29,7 @@ export const contextApi = {
   publish,
   extraction,
   contextObjects,
+  versions,
 } as const
 
 export * from './connectionApi'
@@ -38,5 +40,6 @@ export * from './reviewApi'
 export * from './publishApi'
 export * from './extractionApi'
 export * from './contextObjectsApi'
+export * from './versionApi'
 export { isEndpointMissing, ApiError } from './client'
 export { endpoints, STEP_ENDPOINT_LIVE } from './endpoints'

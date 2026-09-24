@@ -1,5 +1,7 @@
 import { listAdkContextObjects } from '@/api/adkAgentApi'
 import type { AdkContextObject, AdkContextObjects } from '@/api/adkAgentApi'
+import { contextHttp } from './client'
+import { endpoints } from './endpoints'
 
 /**
  * The facts an extraction run wrote into the Context Layer.
@@ -25,6 +27,26 @@ export function fetchContextObjects(
   sessionId?: string
 ): Promise<ContextObjects> {
   return listAdkContextObjects(connectionId, sessionId)
+}
+
+/**
+ * The same facts, read through the Node backend — used in demo mode, when the
+ * ADK API is not what wrote them and may not be running at all. The backend
+ * answers in the ADK API's shape; this maps it the same way.
+ */
+export async function fetchNodeContextObjects(connectionId: string): Promise<ContextObjects> {
+  const raw = await contextHttp.get<{
+    workspace_id: string
+    resolved_session_id: string | null
+    count: number
+    objects: ContextObject[]
+  }>(endpoints.contextObjects(connectionId))
+  return {
+    workspaceId: raw.workspace_id,
+    resolvedSessionId: raw.resolved_session_id ?? null,
+    count: raw.count ?? 0,
+    objects: raw.objects ?? [],
+  }
 }
 
 /**

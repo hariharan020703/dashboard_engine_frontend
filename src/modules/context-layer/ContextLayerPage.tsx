@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
 import { ContextQueryProvider } from './queries/QueryProvider'
 import { useConnections, useConnectors, useDeleteConnection, useVerifyConnection } from './queries/hooks'
+import { VersionBadge } from './components/VersionBadge'
 import { connectorPresentation, isConnectable } from './connectors/registry'
 import { formatRelativeTime, maskSecretHint } from './components/format'
 import type { Connection } from './types'
@@ -253,6 +254,18 @@ function ConnectionCard({
             {connection.host} · {maskSecretHint(connection.secretHint)}
           </p>
 
+          {connection.context ? (
+            <p className="mt-2 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+              <VersionBadge status={connection.context.status} label={connection.context.label} />
+              <span className="truncate">
+                {connection.context.name}
+                {connection.context.status === 'published' && connection.context.publishedAt
+                  ? ` · published ${formatRelativeTime(connection.context.publishedAt)}`
+                  : ` · edited ${formatRelativeTime(connection.context.updatedAt)}`}
+              </span>
+            </p>
+          ) : null}
+
           <dl className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
               <Table2 className="size-3" aria-hidden />
@@ -284,7 +297,11 @@ function ConnectionCard({
         {canManage ? (
           <Button asChild size="sm">
             <Link to={builderPath}>
-              {datasetCount > 0 ? 'Continue building' : 'Build context'}
+              {connection.context?.status === 'published'
+                ? 'Edit context'
+                : datasetCount > 0
+                  ? 'Continue building'
+                  : 'Build context'}
               <ArrowRight className="size-4" aria-hidden />
             </Link>
           </Button>

@@ -1,10 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import type { UseQueryOptions } from '@tanstack/react-query'
+import type { QueryClient, UseQueryOptions } from '@tanstack/react-query'
 import { contextApi, isEndpointMissing } from '../api'
 import { contextKeys } from './keys'
 import type {
   Connection,
   Connector,
+  ContextSettings,
+  ContextVersionState,
+  WorkflowStepId,
   CreatedConnection,
   ModelGraph,
   ProfileOverview,
@@ -51,6 +54,62 @@ function proposedQueryOptions<T>() {
     retry: (failureCount: number, error: unknown) =>
       !isEndpointMissing(error) && failureCount < 2,
   } satisfies Partial<UseQueryOptions<T>>
+}
+
+/* ------------------------------------------- settings and versions --- */
+
+const settingsQuery = {
+  queryKey: contextKeys.settings(),
+  queryFn: () => contextApi.versions.fetchSettings(),
+  // Deployment configuration: it changes when the backend restarts, not while
+  // somebody is looking at the screen.
+  staleTime: 10 * 60_000,
+}
+
+/** Which engine runs step 4 — the agent, or the backend's demo generator. */
+export function useContextSettings() {
+  return useQuery<ContextSettings>(settingsQuery)
+}
+
+/**
+ * The extraction mode, for use inside a query or mutation function.
+ *
+ * Read through the cache rather than passed in from a component, so a hook
+ * cannot run before the answer is known and silently pick the wrong service.
+ */
+async function extractionMode(qc: QueryClient): Promise<ContextSettings['extractionMode']> {
+  const settings = await qc.ensureQueryData<ContextSettings>(settingsQuery)
+  return settings.extractionMode
+}
+
+/** Draft / published state and every version of this connection's context. */
+export function useContextVersions(connectionId: string | null, enabled = true) {
+  return useQuery<ContextVersionState>({
+    queryKey: contextKeys.versions(connectionId ?? ''),
+    queryFn: () => contextApi.versions.fetchVersions(connectionId!),
+    enabled: Boolean(connectionId) && enabled,
+  })
+}
+
+/**
+ * Moves the open draft's step marker as somebody moves through the builder.
+ *
+ * Never opens a draft — the backend refuses to, because looking through a
+ * published context is not editing it. Fire-and-forget: a missed marker is
+ * cosmetic and the next write corrects it.
+ */
+export function useTrackStep(connectionId: string | null) {
+  const qc = useQueryClient()
+  return useMutation<unknown, unknown, WorkflowStepId>({
+    mutationFn: (step) => contextApi.versions.trackStep(connectionId!, step),
+    onSuccess: () => qc.invalidateQueries({ queryKey: contextKeys.versions(connectionId ?? '') }),
+  })
+}
+
+/** Everything that changes the draft also changes what the version badge says. */
+function invalidateVersions(qc: QueryClient, connectionId: string | null) {
+  qc.invalidateQueries({ queryKey: contextKeys.versions(connectionId ?? '') })
+  qc.invalidateQueries({ queryKey: contextKeys.connections(), exact: true })
 }
 
 /* ---------------------------------------------------- step 1 — connect --- */
@@ -182,6 +241,7 @@ export function useSaveSelection(connectionId: string | null) {
         qc.invalidateQueries({ queryKey: contextKeys.model(connectionId) })
         qc.invalidateQueries({ queryKey: contextKeys.review(connectionId) })
         qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId) })
+        invalidateVersions(qc, connectionId)
       }
     },
   })
@@ -226,9 +286,13 @@ export function useTableProfile(connectionId: string | null, tableId: string | n
  * those.
  */
 export function useExtraction(connectionId: string | null, enabled = true) {
+  const qc = useQueryClient()
   return useQuery<ExtractionResult | null>({
     queryKey: contextKeys.extraction(connectionId ?? ''),
-    queryFn: () => contextApi.extraction.fetchLatestExtraction(connectionId!),
+    queryFn: async () =>
+      (await extractionMode(qc)) === 'demo'
+        ? contextApi.extraction.fetchLatestDemoExtraction(connectionId!)
+        : contextApi.extraction.fetchLatestExtraction(connectionId!),
     enabled: Boolean(connectionId) && enabled,
     /*
      * A finished run does not change on its own, and re-reading a transcript
@@ -253,10 +317,21 @@ export function useExtraction(connectionId: string | null, enabled = true) {
 export function useRunExtraction(connectionId: string | null) {
   const qc = useQueryClient()
   return useMutation<ExtractionResult, unknown, { datasetIds: string[]; domain?: string }>({
-    mutationFn: ({ datasetIds, domain }) =>
-      contextApi.extraction.runExtraction(connectionId!, datasetIds, { domain }),
+    /*
+     * Demo mode runs in the Node backend, from the saved selection — the
+     * dataset ids are not sent because the backend reads the same ones.
+     */
+    mutationFn: async ({ datasetIds, domain }) =>
+      (await extractionMode(qc)) === 'demo'
+        ? contextApi.extraction.runDemoExtraction(connectionId!)
+        : contextApi.extraction.runExtraction(connectionId!, datasetIds, { domain }),
     onSuccess: (result) => {
       qc.setQueryData(contextKeys.extraction(connectionId ?? ''), result)
+      invalidateVersions(qc, connectionId)
+      // New facts change what Model, Review and Publish derive from them.
+      qc.invalidateQueries({ queryKey: contextKeys.model(connectionId ?? '') })
+      qc.invalidateQueries({ queryKey: contextKeys.review(connectionId ?? '') })
+      qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
       /*
        * A run's whole purpose is to write context_objects rows, so the facts
        * are stale the moment it finishes. Invalidated rather than seeded: the
@@ -277,9 +352,13 @@ export function useRunExtraction(connectionId: string | null) {
  * recorded rather than what the agent said it recorded.
  */
 export function useContextObjects(connectionId: string | null, enabled = true) {
+  const qc = useQueryClient()
   return useQuery<ContextObjects>({
     queryKey: contextKeys.contextObjects(connectionId ?? ''),
-    queryFn: () => contextApi.contextObjects.fetchContextObjects(connectionId!),
+    queryFn: async () =>
+      (await extractionMode(qc)) === 'demo'
+        ? contextApi.contextObjects.fetchNodeContextObjects(connectionId!)
+        : contextApi.contextObjects.fetchContextObjects(connectionId!),
     enabled: Boolean(connectionId) && enabled,
     staleTime: 60_000,
     // Only reachable when that service is running; a retry storm against one
@@ -323,6 +402,7 @@ export function useDecideRelationship(connectionId: string | null) {
       qc.invalidateQueries({ queryKey: contextKeys.model(connectionId ?? '') })
       qc.invalidateQueries({ queryKey: contextKeys.review(connectionId ?? '') })
       qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
+      invalidateVersions(qc, connectionId)
     },
   })
 }
@@ -365,6 +445,7 @@ export function useDecideReviewItem(connectionId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: contextKeys.review(connectionId ?? '') })
       qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
+      invalidateVersions(qc, connectionId)
     },
   })
 }
@@ -383,6 +464,7 @@ export function useUpdateReviewItem(connectionId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: contextKeys.review(connectionId ?? '') })
       qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
+      invalidateVersions(qc, connectionId)
     },
   })
 }
@@ -401,6 +483,7 @@ export function useBulkDecide(connectionId: string | null) {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: contextKeys.review(connectionId ?? '') })
       qc.invalidateQueries({ queryKey: contextKeys.publish(connectionId ?? '') })
+      invalidateVersions(qc, connectionId)
     },
   })
 }

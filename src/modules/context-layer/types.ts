@@ -68,6 +68,12 @@ export interface Connection {
   selectedDatasetCount?: number
   /** On the detail read only. */
   selectedDatasets?: SelectedDataset[]
+  /**
+   * On the list read only: where this connection's context stands — the open
+   * draft if there is one, otherwise the latest published version. Null when
+   * nothing has been built yet.
+   */
+  context?: ContextVersionHeadline | null
 }
 
 /** Who the credential belongs to, reported when it is validated. */
@@ -429,6 +435,8 @@ export interface PublishSummary {
   suggestedName: string
   /** The last version published under that name, or null. */
   previousVersion: number | null
+  /** The draft that publishing will turn into a published version, or null. */
+  draft: ContextVersion | null
   stats: PublishStat[]
   datasets: PublishDataset[]
   content: PublishContentItem[]
@@ -464,6 +472,69 @@ export interface PublishResult {
   /** How many approved facts the snapshot holds. */
   objectCount: number
   status: 'published' | 'failed' | string
+}
+
+/* =========================================================================
+   Versions — LIVE (Node, `context_layer_versions`)
+
+   A context is a `draft` from its first edit until it is published; publishing
+   turns that row `published`. Editing afterwards opens a NEW draft — the next
+   version — beside it, so a published version never changes.
+   ========================================================================== */
+
+export type ContextVersionStatus = 'draft' | 'published'
+
+export interface ContextVersion {
+  id: string
+  connectionId: string
+  name: string
+  version: number
+  /** `v2` — the backend's own spelling, so the screen never builds it. */
+  label: string
+  status: ContextVersionStatus
+  currentStep: WorkflowStepId | null
+  datasetIds: string[]
+  /** The published version this draft was edited from. */
+  basedOnId: string | null
+  sessionId: string | null
+  extractionMode: 'agent' | 'demo' | null
+  extractedAt: string | null
+  objectCount: number
+  stats: Record<string, unknown>
+  createdBy: number | null
+  createdAt: string
+  updatedAt: string
+  publishedBy: number | null
+  publishedAt: string | null
+}
+
+export interface ContextVersionState {
+  connectionId: string
+  /** `none` until the first edit. */
+  status: ContextVersionStatus | 'none'
+  draft: ContextVersion | null
+  latestPublished: ContextVersion | null
+  /** Every version, newest first. */
+  versions: ContextVersion[]
+}
+
+/** The one-line summary a connection card shows. */
+export interface ContextVersionHeadline {
+  name: string
+  version: number
+  label: string
+  status: ContextVersionStatus
+  publishedAt: string | null
+  updatedAt: string
+}
+
+/** Deployment facts the builder needs from the backend. */
+export interface ContextSettings {
+  /**
+   * `demo` while the real agent is unavailable: step 4 is run by the Node
+   * backend's templated generator instead of the ADK extraction agent.
+   */
+  extractionMode: 'agent' | 'demo'
 }
 
 /* ======================================================== workflow (client)

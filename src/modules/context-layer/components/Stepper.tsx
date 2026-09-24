@@ -137,23 +137,7 @@ export function Stepper() {
                 </TooltipTrigger>
 
                 <TooltipContent side="bottom" className="max-w-[240px]">
-                  <p className="font-medium">
-                    Step {i + 1} of {WORKFLOW_STEPS.length}: {s.label}
-                  </p>
-                  <p className="mt-0.5 text-xs opacity-80">{s.description}</p>
-                  <p
-                    className={cn(
-                      'mt-1.5 text-xs',
-                      state === 'locked' ? 'text-amber-300' : 'opacity-80'
-                    )}
-                  >
-                    {hint}
-                  </p>
-                  {pending && state !== 'locked' ? (
-                    <p className="mt-1 text-xs text-amber-300">
-                      This step's backend endpoint is not built yet.
-                    </p>
-                  ) : null}
+                  <p className={cn('text-xs', state === 'locked' && 'text-amber-300')}>{hint}</p>
                 </TooltipContent>
               </Tooltip>
 

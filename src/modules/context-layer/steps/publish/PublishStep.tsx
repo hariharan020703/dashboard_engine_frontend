@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { AlertTriangle, CheckCircle2, Loader2, Rocket, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, History, Loader2, Rocket, ShieldCheck } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Input } from '@/components/ui/input'
@@ -14,11 +14,22 @@ import {
   TableSkeleton,
 } from '../../components/DataStates'
 import { SectionHeading, StatTile } from '../../components/primitives'
-import { formatDateTime, formatExact } from '../../components/format'
+import { VersionBadge } from '../../components/VersionBadge'
+import { formatDateTime, formatExact, formatRelativeTime } from '../../components/format'
 import { endpoints } from '../../api'
-import { usePublish, usePublishSummary, useValidatePublish } from '../../queries/hooks'
+import {
+  useContextVersions,
+  usePublish,
+  usePublishSummary,
+  useValidatePublish,
+} from '../../queries/hooks'
 import { useWorkflow } from '../../state/workflowContext'
-import type { PublishBlocker, PublishResult, PublishSummary } from '../../types'
+import type {
+  ContextVersion,
+  PublishBlocker,
+  PublishResult,
+  PublishSummary,
+} from '../../types'
 
 /**
  * Step 7 — Publish.
@@ -204,6 +215,13 @@ export function PublishStep() {
                     ) : null}
                     .
                   </p>
+                  {data.draft ? (
+                    <p className="text-xs text-muted-foreground">
+                      Publishing turns{' '}
+                      <VersionBadge status="draft" label={data.draft.label} className="align-middle" />{' '}
+                      into a published version. Earlier published versions are kept unchanged.
+                    </p>
+                  ) : null}
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
@@ -239,6 +257,8 @@ export function PublishStep() {
                 </div>
               </div>
             )}
+
+            <VersionHistory connectionId={connectionId} />
           </div>
         )}
       </QueryBoundary>
@@ -351,6 +371,46 @@ function BlockerList({
           </li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+/**
+ * Every version of this context, newest first: the open draft and each
+ * published version, which stay exactly as they were published.
+ */
+function VersionHistory({ connectionId }: { connectionId: string }) {
+  const versions = useContextVersions(connectionId)
+  const rows = versions.data?.versions ?? []
+  if (rows.length === 0) return null
+
+  const labelOf = new Map(rows.map((v) => [v.id, `${v.name} ${v.label}`]))
+
+  return (
+    <section>
+      <SectionHeading
+        title="Version history"
+        description="A published version never changes. Editing after publishing opens the next version as a draft."
+      />
+      <ol className="divide-y rounded-lg border bg-card">
+        {rows.map((v: ContextVersion) => (
+          <li key={v.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2.5 text-sm">
+            <History className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <VersionBadge status={v.status} label={v.label} />
+            <span className="font-medium">{v.name}</span>
+            {v.basedOnId && labelOf.has(v.basedOnId) ? (
+              <span className="text-xs text-muted-foreground">
+                edited from {labelOf.get(v.basedOnId)}
+              </span>
+            ) : null}
+            <span className="ml-auto text-xs tabular-nums text-muted-foreground">
+              {v.status === 'published'
+                ? `${formatExact(v.objectCount)} fact${v.objectCount === 1 ? '' : 's'} · published ${formatRelativeTime(v.publishedAt)}`
+                : `in progress · ${v.currentStep ?? 'started'} · edited ${formatRelativeTime(v.updatedAt)}`}
+            </span>
+          </li>
+        ))}
+      </ol>
     </section>
   )
 }

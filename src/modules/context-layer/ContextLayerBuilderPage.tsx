@@ -1,4 +1,4 @@
-import { Suspense, lazy } from 'react'
+import { Suspense, lazy, useEffect } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { ArrowLeft } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -9,6 +9,9 @@ import { WorkflowProvider } from './state/WorkflowProvider'
 import { useWorkflow } from './state/workflowContext'
 import { Stepper } from './components/Stepper'
 import { LoadingState } from './components/DataStates'
+import { VersionBadge } from './components/VersionBadge'
+import { formatRelativeTime } from './components/format'
+import { useContextVersions, useTrackStep } from './queries/hooks'
 
 /*
  * Each step is its own chunk, fetched when somebody first opens it.
@@ -72,8 +75,18 @@ export default function ContextLayerBuilderPage() {
 }
 
 function BuilderShell() {
-  const { step } = useWorkflow()
+  const { step, connectionId } = useWorkflow()
   const paths = usePaths()
+  const { mutate: trackStep } = useTrackStep(connectionId)
+
+  /*
+   * Keeps the open draft's step marker where somebody actually is. It moves
+   * an existing draft only - the backend opens drafts on writes, so stepping
+   * through a published context to read it does not create a new version.
+   */
+  useEffect(() => {
+    if (connectionId) trackStep(step)
+  }, [connectionId, step, trackStep])
 
   return (
     <Page>
@@ -85,6 +98,7 @@ function BuilderShell() {
               Connect a source, choose datasets, and build the context your agents and dashboards
               read from.
             </p>
+            <VersionLine connectionId={connectionId} />
           </div>
           <Button asChild variant="outline" size="sm">
             <Link to={paths.context}>
@@ -119,5 +133,41 @@ function BuilderShell() {
         </div>
       </div>
     </Page>
+  )
+}
+
+/**
+ * Where this context stands: which version is being edited, and what it was
+ * edited from. Nothing renders until the context exists - a new connection
+ * with no writes yet has no version to describe.
+ */
+function VersionLine({ connectionId }: { connectionId: string | null }) {
+  const versions = useContextVersions(connectionId)
+  const state = versions.data
+  if (!state || state.status === 'none') return null
+
+  const { draft, latestPublished } = state
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+      {draft ? (
+        <>
+          <VersionBadge status="draft" label={draft.label} />
+          <span>
+            <strong className="font-medium text-foreground">{draft.name}</strong>
+            {latestPublished
+              ? ` — editing a new version of published ${latestPublished.label}, which stays live until this is published.`
+              : ' — not published yet. Changes are saved as you go.'}
+          </span>
+        </>
+      ) : latestPublished ? (
+        <>
+          <VersionBadge status="published" label={latestPublished.label} />
+          <span>
+            <strong className="font-medium text-foreground">{latestPublished.name}</strong>
+            {` — published ${formatRelativeTime(latestPublished.publishedAt)}. Any change opens the next version as a draft.`}
+          </span>
+        </>
+      ) : null}
+    </div>
   )
 }

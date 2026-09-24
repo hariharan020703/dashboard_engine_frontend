@@ -10,6 +10,7 @@ import { SectionHeading } from '../../components/primitives'
 import {
   useConnection,
   useContextObjects,
+  useContextSettings,
   useExtraction,
   useRunExtraction,
 } from '../../queries/hooks'
@@ -41,6 +42,8 @@ export function UnderstandStep() {
   const extraction = useExtraction(connectionId)
   const facts = useContextObjects(connectionId)
   const rerun = useRunExtraction(connectionId)
+  // TEMPORARY: while the agent is unavailable the backend generates demo facts.
+  const demo = useContextSettings().data?.extractionMode === 'demo'
 
   if (!connectionId) {
     return (
@@ -67,7 +70,11 @@ export function UnderstandStep() {
   return (
     <StepFrame
       title="Understand your data"
-      description="What the extraction agent found in the datasets you selected."
+      description={
+        demo
+          ? 'Demo context generated from the datasets you selected — the AI agent is switched off.'
+          : 'What the extraction agent found in the datasets you selected.'
+      }
       actions={
         <Button
           variant="outline"
@@ -80,15 +87,15 @@ export function UnderstandStep() {
           ) : (
             <Sparkles className="size-4" aria-hidden />
           )}
-          {result ? 'Run again' : 'Run extraction'}
+          {result ? 'Run again' : demo ? 'Generate demo context' : 'Run extraction'}
         </Button>
       }
       footerNote={result ? `Session ${result.sessionId}` : undefined}
     >
       {running ? (
-        <RunningState count={datasetIds.length} />
+        <RunningState count={datasetIds.length} demo={demo} />
       ) : extraction.isPending ? (
-        <RunningState count={datasetIds.length} loadingOnly />
+        <RunningState count={datasetIds.length} loadingOnly demo={demo} />
       ) : extraction.isError ? (
         <ErrorState
           context="reach the context extraction service"
@@ -109,7 +116,7 @@ export function UnderstandStep() {
             datasetIds.length > 0 ? (
               <Button size="sm" onClick={run}>
                 <Sparkles className="size-4" aria-hidden />
-                Run extraction
+                {demo ? 'Generate demo context' : 'Run extraction'}
               </Button>
             ) : (
               <Button size="sm" variant="outline" onClick={() => goToStep('discover')}>
@@ -129,14 +136,27 @@ export function UnderstandStep() {
  * Saying roughly what it is doing, and that minutes are expected, is the
  * difference between waiting and assuming it has hung.
  */
-function RunningState({ count, loadingOnly }: { count: number; loadingOnly?: boolean }) {
+function RunningState({
+  count,
+  loadingOnly,
+  demo,
+}: {
+  count: number
+  loadingOnly?: boolean
+  demo?: boolean
+}) {
   return (
     <div className="flex flex-col items-center justify-center rounded-lg border border-dashed px-6 py-16 text-center">
       <Loader2 className="mb-4 size-6 animate-spin text-primary" aria-hidden />
       <p className="text-sm font-medium">
         {loadingOnly ? 'Looking for a previous run…' : 'Extracting context'}
       </p>
-      {loadingOnly ? null : (
+      {loadingOnly ? null : demo ? (
+        <p className="mt-1 max-w-md text-sm text-muted-foreground">
+          Reading the schema and sample of {count} dataset{count === 1 ? '' : 's'} and
+          writing demo context from them. This takes a few seconds per table.
+        </p>
+      ) : (
         <p className="mt-1 max-w-md text-sm text-muted-foreground">
           The agent is reading {count} dataset{count === 1 ? '' : 's'} and writing what it
           finds into the context layer. It runs to completion before answering, so a few
@@ -165,6 +185,7 @@ function ExtractionView({
 }) {
   return (
     <div className="space-y-5">
+
       {result?.interrupted ? (
         <div className="flex items-start gap-2.5 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-900 dark:bg-amber-950/40">
           <TriangleAlert
@@ -194,8 +215,12 @@ function ExtractionView({
       {result ? (
         <section>
           <SectionHeading
-            title="Agent report"
-            description="The agent's own account of the run, in its words."
+            title={result.mode === 'demo' ? 'Run report' : 'Agent report'}
+            description={
+              result.mode === 'demo'
+                ? 'What the demo generator read and wrote.'
+                : "The agent's own account of the run, in its words."
+            }
           />
           <article className="rounded-lg border bg-card px-4 py-3">
             <div className="prose prose-sm dark:prose-invert max-w-none [&_table]:text-xs">

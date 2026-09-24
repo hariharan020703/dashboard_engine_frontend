@@ -4,6 +4,8 @@ import {
   listAdkSessions,
   sendAdkMessage,
 } from '@/api/adkAgentApi'
+import { contextHttp } from './client'
+import { endpoints } from './endpoints'
 
 /**
  * The context extraction run — the one part of this workflow that does NOT
@@ -42,6 +44,11 @@ export interface ExtractionResult {
   toolCalls: string[]
   /** True when a concurrent interrupt cut the turn short. */
   interrupted: boolean
+  /**
+   * `demo` when the Node backend's templated generator produced this rather
+   * than the agent. Absent on an agent run.
+   */
+  mode?: 'agent' | 'demo'
 }
 
 /**
@@ -112,4 +119,24 @@ export async function fetchLatestExtraction(
     toolCalls: [],
     interrupted: false,
   }
+}
+
+/* ------------------------------------------------------------------ demo --- */
+
+/*
+ * The DEMO extraction, run by the Node backend while the agent is unavailable
+ * (`CONTEXT_EXTRACTION_MODE=demo`). Same result shape as an agent run, so the
+ * steps render it unchanged; `mode: 'demo'` is what lets them say so.
+ *
+ * TEMPORARY. When the backend reports `agent`, nothing calls these.
+ */
+
+export function runDemoExtraction(connectionId: string): Promise<ExtractionResult> {
+  return contextHttp.post<ExtractionResult>(endpoints.extraction(connectionId))
+}
+
+export function fetchLatestDemoExtraction(
+  connectionId: string
+): Promise<ExtractionResult | null> {
+  return contextHttp.get<ExtractionResult | null>(endpoints.extraction(connectionId))
 }

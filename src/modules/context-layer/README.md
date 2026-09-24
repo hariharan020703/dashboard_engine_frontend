@@ -130,6 +130,15 @@ Three things about that payload:
 Profile stays put and shows progress rather than advancing to an empty screen. A failed run
 keeps you on Profile with the selection intact.
 
+**Demo mode (temporary).** When `GET /context/settings` reports `extractionMode: 'demo'`
+(backend `CONTEXT_EXTRACTION_MODE=demo`, while the Anthropic credit is unavailable), the
+same hooks call the **Node** backend instead: `POST …/extraction` generates agent-shaped
+facts from the selected tables' real schema, and Understand reads the report
+(`GET …/extraction`) and facts (`GET …/context-objects`) from Node too. The result carries
+`mode: 'demo'`, and Understand shows a "Demo output" banner. The choice is made inside
+`queries/hooks.ts` (`extractionMode()`), so no step component knows which engine ran.
+Setting the backend back to `agent` is the whole switch.
+
 ### What Understand shows, and in what order
 
 Two things, from two different reads, and the order is deliberate:
@@ -226,7 +235,15 @@ the queue. One endpoint, one flag, so the two screens cannot disagree.
 Editing merges the payload rather than replacing it: an editor sends the keys it renders,
 and replacing would drop the distinct values, sample sizes and notes it does not.
 
-**Publish** writes a named, versioned snapshot to `context_publications`. The **name** is
+**Versions.** A context is a **draft** from its first write (the backend opens it — saving
+a selection, running an extraction, a review decision) until it is published; editing after
+that opens the **next version** as a new draft, and published versions never change. The
+builder header shows `Draft · v2` / `Published · v1` (`components/VersionBadge.tsx`,
+`useContextVersions`), the landing cards show the same, and moving between steps sends
+`PATCH …/draft` to move an existing draft's step marker — it never opens one.
+
+**Publish** turns the open draft into a named, versioned snapshot in
+`context_layer_versions` (formerly `context_publications`), and lists every version. The **name** is
 the point — a connection is where the data came from ("Domo — Sales"), a published context
 is what it is *for* ("Revenue", "Site safety"), and one connection can produce several. The
 version counts **per name**, so republishing "Revenue" makes v2 of Revenue while a new name
